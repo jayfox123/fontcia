@@ -56,6 +56,10 @@ function handleMouseUp(event: MouseEvent): void {
 
   renderLockedSelection(shadowSurface, rect, dismissSelection);
   isLocked = true;
+  // The surface stays in the DOM (it hosts the box/panel until dismiss), but
+  // selection mode is otherwise fully off once locked — reset the cursor so
+  // it doesn't keep showing crosshair over the rest of the page.
+  shadowSurface.style.cursor = 'default';
 }
 
 function createOverlay(): void {

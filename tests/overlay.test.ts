@@ -87,6 +87,18 @@ describe('drag lifecycle', () => {
     expect(surface.querySelector('.fontcia-panel')).not.toBeNull();
   });
 
+  it('resets the cursor to default once a selection locks', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+
+    expect(surface.style.cursor).toBe('crosshair');
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mouseup', 60, 40);
+
+    expect(surface.style.cursor).toBe('default');
+  });
+
   it('treats a sub-threshold drag as a no-op and stays armed', () => {
     armSelectionMode(1);
     const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
