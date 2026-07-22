@@ -104,10 +104,13 @@ function createOverlay(): void {
 }
 
 function teardownOverlay(): void {
-  // Cancel any in-flight mock scan before anything else — this is what makes
-  // dispose() actually fire for every real dismiss trigger (Esc, panel close,
-  // and the DISMISS_SELECTION message all call dismissSelection(), which
-  // calls this function), not just when dispose() is called directly.
+  // This is what makes dispose() actually fire for every real dismiss trigger
+  // (Esc, panel close, and the DISMISS_SELECTION message all call
+  // dismissSelection(), which calls this function), not just when dispose()
+  // is called directly. Where within this function it's called doesn't matter
+  // — the whole body runs synchronously with no await, so a pending
+  // scanFn(...).then(...) callback can't interleave regardless — it just needs
+  // to happen before this function returns.
   lockedDispose?.();
   lockedDispose = null;
   document.removeEventListener('keydown', handleKeydown);
@@ -139,8 +142,19 @@ export function dismissSelection(): void {
 }
 
 function restartSelection(): void {
+  // Deliberately does NOT go through dismissSelection(): the tab stays active
+  // throughout a restart (the user is starting a fresh selection, not leaving),
+  // so there's no need to clear the storage flag only to immediately re-mark it.
+  // clearSelectionActive and markSelectionActive are both unawaited fire-and-forget
+  // calls with no ordering guarantee between them — issuing both for the same tab
+  // back-to-back would risk the mark losing a race against a slower clear against
+  // real chrome.storage.session IPC, leaving the tab stuck "inactive" while the
+  // overlay is genuinely re-armed. Tearing down the DOM directly and re-arming
+  // (which re-marks active, an idempotent no-op if it was already true) avoids
+  // that race entirely by never issuing the clear on this path.
   const tabId = currentTabId;
-  dismissSelection();
+  currentTabId = null;
+  teardownOverlay();
   if (tabId !== null) {
     armSelectionMode(tabId);
   }
