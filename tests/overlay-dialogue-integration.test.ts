@@ -15,14 +15,14 @@ vi.mock('../src/content/mock-scan', async (importOriginal) => {
                 ? { status: 'match', fontName: 'Inter', confidence: 92, sources: [] }
                 : { status: 'no-match' },
             );
-          }, 15);
+          }, 20);
         }),
     ),
   };
 });
 
 import { armSelectionMode, dismissSelection } from '../src/content/overlay';
-import { isSelectionActive } from '../src/shared/session-state';
+import { isSelectionActive, clearSelectionActive } from '../src/shared/session-state';
 
 function dispatchMouse(target: Element, type: string, x: number, y: number): void {
   target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
@@ -55,7 +55,7 @@ describe('dispose on real dismiss paths cancels an in-flight scan', () => {
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     expect(document.getElementById('fontcia-overlay-host')).toBeNull();
     expect(panel.querySelector('.fontcia-result-font')).toBeNull();
@@ -74,11 +74,21 @@ describe('restartSelection via New scan', () => {
     const scanBtn = surface.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
     scanBtn.click();
 
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 150));
 
     const newScanBtn = Array.from(surface.querySelectorAll('.fontcia-btn-secondary')).find(
       (b) => b.textContent === 'New scan',
     ) as HTMLButtonElement;
+
+    // Force the flag false immediately before restarting. restartSelection()
+    // deliberately never clears it itself (see overlay.ts), so by the time we
+    // get here it would already read true regardless of whether the restart
+    // path works — asserting `true` afterward would pass even if
+    // armSelectionMode's re-mark were completely removed. Clearing it here
+    // first means the final assertion only passes if the restart path
+    // actually re-marks the tab active, not because it was never touched.
+    await clearSelectionActive(1);
+
     newScanBtn.click();
 
     const newHost = document.getElementById('fontcia-overlay-host');
