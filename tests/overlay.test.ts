@@ -99,16 +99,17 @@ describe('drag lifecycle', () => {
     expect(surface.style.cursor).toBe('default');
   });
 
-  it('stops the surface from capturing clicks once a selection locks, so the panel stays interactive', () => {
+  it('stops the host from capturing clicks once a selection locks, so the panel stays interactive', () => {
     armSelectionMode(1);
-    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+    const host = document.getElementById('fontcia-overlay-host') as HTMLElement;
+    const surface = host.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
 
-    expect(surface.style.pointerEvents).toBe('');
+    expect(host.style.pointerEvents).toBe('');
 
     dispatchMouse(surface, 'mousedown', 10, 10);
     dispatchMouse(surface, 'mouseup', 60, 40);
 
-    expect(surface.style.pointerEvents).toBe('none');
+    expect(host.style.pointerEvents).toBe('none');
   });
 
   it('treats a sub-threshold drag as a no-op and stays armed', () => {

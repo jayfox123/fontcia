@@ -56,14 +56,18 @@ function handleMouseUp(event: MouseEvent): void {
 
   renderLockedSelection(shadowSurface, rect, dismissSelection);
   isLocked = true;
-  // The surface stays in the DOM (it hosts the box/panel until dismiss), but
+  // The host stays in the DOM (it hosts the box/panel until dismiss), but
   // selection mode is otherwise fully off once locked — reset the cursor so
   // it doesn't keep showing crosshair over the rest of the page, and stop the
-  // full-viewport surface from capturing clicks outside the box/panel. The
-  // panel opts back into pointer events via its own CSS rule (.fontcia-panel
-  // { pointer-events: auto }), so it and its close button stay clickable.
+  // full-viewport host from capturing clicks outside the box/panel. Setting
+  // this on the light-DOM host itself (not just the shadow-tree surface) is
+  // what actually lets clicks fall through to the underlying page — the panel
+  // opts back into pointer events via its own CSS rule (.fontcia-panel
+  // { pointer-events: auto }), inherited by its close button, so both stay clickable.
   shadowSurface.style.cursor = 'default';
-  shadowSurface.style.pointerEvents = 'none';
+  if (hostEl) {
+    hostEl.style.pointerEvents = 'none';
+  }
 }
 
 function createOverlay(): void {
