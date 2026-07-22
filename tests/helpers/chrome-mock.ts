@@ -22,6 +22,7 @@ export function createChromeMock() {
           const keyList = Array.isArray(keys) ? keys : [keys];
           for (const key of keyList) store.delete(key);
         }),
+        setAccessLevel: vi.fn(async () => {}),
       },
     },
     runtime: {
