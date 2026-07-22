@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createChromeMock } from './helpers/chrome-mock';
-import { chromeMock as setupChromeMock } from './setup';
+import { moduleLoadChromeMock } from './setup';
 import { handleIconClick } from '../src/background/service-worker';
 
 let chromeMock: ReturnType<typeof createChromeMock>;
@@ -46,10 +46,10 @@ describe('module load side effects', () => {
     // The top-level `import '../src/background/service-worker'` above runs once,
     // the first time this test file is loaded by Vitest, against whatever
     // globalThis.chrome exists at that moment — the default mock installed by
-    // tests/setup.ts (imported for its side effect via `setupChromeMock` above),
+    // tests/setup.ts (imported for its side effect via `moduleLoadChromeMock` above),
     // not the fresh per-test `chromeMock` created in beforeEach. So this assertion
     // targets the setup.ts mock, which is the one the module actually saw.
-    expect(setupChromeMock.storage.session.setAccessLevel).toHaveBeenCalledWith({
+    expect(moduleLoadChromeMock.storage.session.setAccessLevel).toHaveBeenCalledWith({
       accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS',
     });
   });
