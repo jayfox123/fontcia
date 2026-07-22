@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderReadyState, renderLoadingState } from '../src/content/scan-dialogue';
+import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from '../src/content/scan-dialogue';
+import type { MatchResult } from '../src/content/mock-scan';
 
 describe('renderReadyState', () => {
   it('renders a Scan button that calls onScan when clicked', () => {
@@ -34,5 +35,92 @@ describe('renderLoadingState', () => {
 
     expect(body.querySelector('.fontcia-spinner')).not.toBeNull();
     expect(body.querySelector('button')).toBeNull();
+  });
+});
+
+describe('renderResultState', () => {
+  const result: MatchResult = {
+    status: 'match',
+    fontName: 'Inter',
+    confidence: 92,
+    sources: [
+      { url: 'https://fonts.google.com/specimen/Inter', label: 'Google Fonts', votes: 14 },
+      { url: 'https://rsms.me/inter/', label: 'Official site', votes: 6 },
+    ],
+  };
+
+  it('renders the font name, confidence, and all sources', () => {
+    const body = document.createElement('div');
+
+    renderResultState(body, result, false, vi.fn(), vi.fn());
+
+    expect(body.querySelector('.fontcia-result-font')?.textContent).toBe('Inter');
+    expect(body.querySelector('.fontcia-confidence')?.textContent).toBe('92% confidence');
+
+    const links = body.querySelectorAll('.fontcia-source-link');
+    expect(links.length).toBe(2);
+    expect((links[0] as HTMLAnchorElement).href).toBe('https://fonts.google.com/specimen/Inter');
+  });
+
+  it('shows unsaved state and calls onToggleSave on click', () => {
+    const body = document.createElement('div');
+    const onToggleSave = vi.fn();
+
+    renderResultState(body, result, false, onToggleSave, vi.fn());
+
+    const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    expect(saveBtn.textContent).toBe('☆ Save');
+
+    saveBtn.click();
+    expect(onToggleSave).toHaveBeenCalledOnce();
+  });
+
+  it('shows saved state when saved is true', () => {
+    const body = document.createElement('div');
+
+    renderResultState(body, result, true, vi.fn(), vi.fn());
+
+    const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    expect(saveBtn.textContent).toBe('★ Saved');
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderResultState(body, result, false, vi.fn(), onNewScan);
+
+    const newScanBtn = body.querySelector('.fontcia-btn-secondary') as HTMLButtonElement;
+    expect(newScanBtn.textContent).toBe('New scan');
+
+    newScanBtn.click();
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderNoMatchState', () => {
+  it('renders a message and a disabled Name-it button', () => {
+    const body = document.createElement('div');
+
+    renderNoMatchState(body, vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')).not.toBeNull();
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const nameItBtn = buttons.find((b) => b.textContent === 'Name it') as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(true);
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderNoMatchState(body, onNewScan);
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+
+    newScanBtn.click();
+    expect(onNewScan).toHaveBeenCalledOnce();
   });
 });

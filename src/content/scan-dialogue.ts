@@ -1,3 +1,5 @@
+import type { MatchResult } from './mock-scan';
+
 export function renderReadyState(body: HTMLElement, onScan: () => void): void {
   body.replaceChildren();
 
@@ -17,4 +19,86 @@ export function renderLoadingState(body: HTMLElement): void {
   spinner.className = 'fontcia-spinner';
 
   body.appendChild(spinner);
+}
+
+export function renderResultState(
+  body: HTMLElement,
+  result: MatchResult,
+  saved: boolean,
+  onToggleSave: () => void,
+  onNewScan: () => void,
+): void {
+  body.replaceChildren();
+
+  const fontName = document.createElement('div');
+  fontName.className = 'fontcia-result-font';
+  fontName.textContent = result.fontName;
+  body.appendChild(fontName);
+
+  const confidence = document.createElement('div');
+  confidence.className = 'fontcia-confidence';
+  confidence.textContent = `${result.confidence}% confidence`;
+  body.appendChild(confidence);
+
+  const sourcesList = document.createElement('ul');
+  sourcesList.className = 'fontcia-sources';
+  for (const source of result.sources) {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.className = 'fontcia-source-link';
+    link.href = source.url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = source.label;
+    item.appendChild(link);
+    sourcesList.appendChild(item);
+  }
+  body.appendChild(sourcesList);
+
+  const actions = document.createElement('div');
+  actions.className = 'fontcia-result-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'fontcia-btn fontcia-btn-primary';
+  saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
+  saveBtn.addEventListener('click', onToggleSave);
+  actions.appendChild(saveBtn);
+
+  const newScanBtn = document.createElement('button');
+  newScanBtn.type = 'button';
+  newScanBtn.className = 'fontcia-btn fontcia-btn-secondary';
+  newScanBtn.textContent = 'New scan';
+  newScanBtn.addEventListener('click', onNewScan);
+  actions.appendChild(newScanBtn);
+
+  body.appendChild(actions);
+}
+
+export function renderNoMatchState(body: HTMLElement, onNewScan: () => void): void {
+  body.replaceChildren();
+
+  const message = document.createElement('div');
+  message.className = 'fontcia-no-match-message';
+  message.textContent = "We don't recognize this one.";
+  body.appendChild(message);
+
+  const actions = document.createElement('div');
+  actions.className = 'fontcia-result-actions';
+
+  const nameItBtn = document.createElement('button');
+  nameItBtn.type = 'button';
+  nameItBtn.className = 'fontcia-btn fontcia-btn-secondary';
+  nameItBtn.textContent = 'Name it';
+  nameItBtn.disabled = true;
+  actions.appendChild(nameItBtn);
+
+  const newScanBtn = document.createElement('button');
+  newScanBtn.type = 'button';
+  newScanBtn.className = 'fontcia-btn fontcia-btn-secondary';
+  newScanBtn.textContent = 'New scan';
+  newScanBtn.addEventListener('click', onNewScan);
+  actions.appendChild(newScanBtn);
+
+  body.appendChild(actions);
 }
