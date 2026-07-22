@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "fontCIA",
+  "version": "0.1.0",
+  "description": "Identify fonts on any webpage by selecting text.",
+  "action": {
+    "default_title": "fontCIA — select text to identify its font"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": ["activeTab", "scripting", "storage"]
+}
