@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { armSelectionMode, dismissSelection } from '../src/content/overlay';
+import { isSelectionActive, markSelectionActive } from '../src/shared/session-state';
 
 afterEach(() => {
   dismissSelection();
@@ -24,6 +25,22 @@ describe('armSelectionMode / dismissSelection', () => {
     dismissSelection();
 
     expect(document.getElementById('fontcia-overlay-host')).toBeNull();
+  });
+
+  it('clears the selection-active flag for the current tab on dismiss', async () => {
+    await markSelectionActive(1);
+
+    armSelectionMode(1);
+    dismissSelection();
+
+    await expect(isSelectionActive(1)).resolves.toBe(false);
+  });
+
+  it('does not leak the previous overlay host when armed twice without a dismiss', () => {
+    armSelectionMode(1);
+    armSelectionMode(1);
+
+    expect(document.querySelectorAll('#fontcia-overlay-host').length).toBe(1);
   });
 
   it('tears down the overlay on Escape', () => {

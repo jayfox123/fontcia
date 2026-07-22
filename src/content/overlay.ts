@@ -12,6 +12,10 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 function createOverlay(): void {
+  if (hostEl !== null) {
+    teardownOverlay();
+  }
+
   hostEl = document.createElement('div');
   hostEl.id = 'fontcia-overlay-host';
   Object.assign(hostEl.style, { position: 'fixed', inset: '0', zIndex: '2147483647' });
