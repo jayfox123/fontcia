@@ -108,3 +108,11 @@ export function dismissSelection(): void {
   currentTabId = null;
   teardownOverlay();
 }
+
+chrome.runtime.onMessage.addListener((message: { type?: string; tabId?: number }) => {
+  if (message?.type === 'ARM_SELECTION' && typeof message.tabId === 'number') {
+    armSelectionMode(message.tabId);
+  } else if (message?.type === 'DISMISS_SELECTION') {
+    dismissSelection();
+  }
+});
