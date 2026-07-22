@@ -55,3 +55,60 @@ describe('armSelectionMode / dismissSelection', () => {
     expect(() => dismissSelection()).not.toThrow();
   });
 });
+
+function dispatchMouse(target: Element, type: string, x: number, y: number): void {
+  target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+}
+
+describe('drag lifecycle', () => {
+  it('draws a live draft box while dragging', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mousemove', 60, 40);
+
+    const draft = surface.querySelector('.fontcia-draft-box') as HTMLElement;
+    expect(draft).not.toBeNull();
+    expect(draft.style.width).toBe('50px');
+    expect(draft.style.height).toBe('30px');
+  });
+
+  it('locks a real drag into a box + panel and removes the draft box', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mousemove', 60, 40);
+    dispatchMouse(surface, 'mouseup', 60, 40);
+
+    expect(surface.querySelector('.fontcia-draft-box')).toBeNull();
+    expect(surface.querySelector('.fontcia-box')).not.toBeNull();
+    expect(surface.querySelector('.fontcia-panel')).not.toBeNull();
+  });
+
+  it('treats a sub-threshold drag as a no-op and stays armed', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mouseup', 12, 10);
+
+    expect(surface.querySelector('.fontcia-box')).toBeNull();
+    expect(surface.querySelector('.fontcia-panel')).toBeNull();
+    expect(document.getElementById('fontcia-overlay-host')).not.toBeNull();
+  });
+
+  it('dismisses the locked panel via its close button', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mouseup', 60, 40);
+
+    const closeBtn = surface.querySelector('.fontcia-panel-close') as HTMLElement;
+    closeBtn.click();
+
+    expect(document.getElementById('fontcia-overlay-host')).toBeNull();
+  });
+});
