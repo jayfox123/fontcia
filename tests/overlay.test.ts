@@ -54,6 +54,12 @@ describe('armSelectionMode / dismissSelection', () => {
   it('is safe to call dismissSelection when nothing is armed', () => {
     expect(() => dismissSelection()).not.toThrow();
   });
+
+  it('marks the tab as selection-active when armed', async () => {
+    armSelectionMode(1);
+
+    await expect(isSelectionActive(1)).resolves.toBe(true);
+  });
 });
 
 function dispatchMouse(target: Element, type: string, x: number, y: number): void {

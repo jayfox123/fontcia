@@ -1,8 +1,12 @@
 import type { Rect } from '../shared/selection-box';
+import type { MatchResult, ScanResult } from './mock-scan';
+import { mockScan } from './mock-scan';
+import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from './scan-dialogue';
 
 export interface LockedSelectionElements {
   box: HTMLDivElement;
   panel: HTMLDivElement;
+  dispose: () => void;
 }
 
 function applyRect(el: HTMLDivElement, rect: Rect): void {
@@ -16,6 +20,8 @@ export function renderLockedSelection(
   container: ParentNode,
   rect: Rect,
   onDismiss: () => void,
+  onRestart: () => void,
+  scanFn: (rect: Rect) => Promise<ScanResult> = mockScan,
 ): LockedSelectionElements {
   const box = document.createElement('div');
   box.className = 'fontcia-box';
@@ -52,10 +58,48 @@ export function renderLockedSelection(
 
   const body = document.createElement('div');
   body.className = 'fontcia-panel-body';
-  body.textContent = 'placeholder — goes here in step 2';
   panel.appendChild(body);
 
   container.appendChild(panel);
 
-  return { box, panel };
+  // State is scoped to this one closure — a fresh instance every time a
+  // selection locks, never module-level, so there's no cross-instance leakage.
+  let disposed = false;
+  let saved = false;
+  let currentResult: MatchResult | null = null;
+
+  function showResult(result: MatchResult): void {
+    currentResult = result;
+    renderResultState(body, result, saved, handleToggleSave, onRestart);
+  }
+
+  function handleToggleSave(): void {
+    if (!currentResult) return;
+    saved = !saved;
+    renderResultState(body, currentResult, saved, handleToggleSave, onRestart);
+  }
+
+  function handleScan(): void {
+    renderLoadingState(body);
+    scanFn(rect).then((result) => {
+      // An in-flight scan must not touch the DOM after the panel is dismissed
+      // (Esc, the close button, or an icon-click toggle-off) — all three
+      // converge on overlay.ts's teardownOverlay(), which calls dispose()
+      // before this promise can resolve into a stale render.
+      if (disposed) return;
+      if (result.status === 'match') {
+        showResult(result);
+      } else {
+        renderNoMatchState(body, onRestart);
+      }
+    });
+  }
+
+  renderReadyState(body, handleScan);
+
+  function dispose(): void {
+    disposed = true;
+  }
+
+  return { box, panel, dispose };
 }

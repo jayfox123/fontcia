@@ -1,4 +1,4 @@
-import { clearSelectionActive } from '../shared/session-state';
+import { clearSelectionActive, markSelectionActive } from '../shared/session-state';
 import { normalizeDragRect, isNoOpDrag, type Point } from '../shared/selection-box';
 import { renderLockedSelection } from './locked-selection';
 import { themeCss } from './theme';
@@ -16,6 +16,7 @@ let draftBox: HTMLDivElement | null = null;
 let dragStart: Point | null = null;
 let isDragging = false;
 let isLocked = false;
+let lockedDispose: (() => void) | null = null;
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
@@ -54,7 +55,8 @@ function handleMouseUp(event: MouseEvent): void {
 
   if (isNoOpDrag(rect)) return;
 
-  renderLockedSelection(shadowSurface, rect, dismissSelection);
+  const locked = renderLockedSelection(shadowSurface, rect, dismissSelection, restartSelection);
+  lockedDispose = locked.dispose;
   isLocked = true;
   // The host stays in the DOM (it hosts the box/panel until dismiss), but
   // selection mode is otherwise fully off once locked — reset the cursor so
@@ -102,6 +104,12 @@ function createOverlay(): void {
 }
 
 function teardownOverlay(): void {
+  // Cancel any in-flight mock scan before anything else — this is what makes
+  // dispose() actually fire for every real dismiss trigger (Esc, panel close,
+  // and the DISMISS_SELECTION message all call dismissSelection(), which
+  // calls this function), not just when dispose() is called directly.
+  lockedDispose?.();
+  lockedDispose = null;
   document.removeEventListener('keydown', handleKeydown);
   hostEl?.remove();
   hostEl = null;
@@ -115,6 +123,9 @@ function teardownOverlay(): void {
 export function armSelectionMode(tabId: number): void {
   currentTabId = tabId;
   createOverlay();
+  markSelectionActive(tabId).catch((error: unknown) =>
+    console.error('fontCIA: failed to mark selection active', error),
+  );
 }
 
 export function dismissSelection(): void {
@@ -125,6 +136,14 @@ export function dismissSelection(): void {
   }
   currentTabId = null;
   teardownOverlay();
+}
+
+function restartSelection(): void {
+  const tabId = currentTabId;
+  dismissSelection();
+  if (tabId !== null) {
+    armSelectionMode(tabId);
+  }
 }
 
 // chrome.scripting.executeScript re-runs this entire script on every injection.
