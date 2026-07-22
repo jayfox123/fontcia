@@ -58,8 +58,12 @@ function handleMouseUp(event: MouseEvent): void {
   isLocked = true;
   // The surface stays in the DOM (it hosts the box/panel until dismiss), but
   // selection mode is otherwise fully off once locked — reset the cursor so
-  // it doesn't keep showing crosshair over the rest of the page.
+  // it doesn't keep showing crosshair over the rest of the page, and stop the
+  // full-viewport surface from capturing clicks outside the box/panel. The
+  // panel opts back into pointer events via its own CSS rule (.fontcia-panel
+  // { pointer-events: auto }), so it and its close button stay clickable.
   shadowSurface.style.cursor = 'default';
+  shadowSurface.style.pointerEvents = 'none';
 }
 
 function createOverlay(): void {
