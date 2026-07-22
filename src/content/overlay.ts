@@ -3,6 +3,12 @@ import { normalizeDragRect, isNoOpDrag, type Point } from '../shared/selection-b
 import { renderLockedSelection } from './locked-selection';
 import { themeCss } from './theme';
 
+declare global {
+  interface Window {
+    __fontciaOverlayInjected?: boolean;
+  }
+}
+
 let currentTabId: number | null = null;
 let hostEl: HTMLDivElement | null = null;
 let shadowSurface: HTMLDivElement | null = null;
@@ -109,10 +115,22 @@ export function dismissSelection(): void {
   teardownOverlay();
 }
 
-chrome.runtime.onMessage.addListener((message: { type?: string; tabId?: number }) => {
-  if (message?.type === 'ARM_SELECTION' && typeof message.tabId === 'number') {
-    armSelectionMode(message.tabId);
-  } else if (message?.type === 'DISMISS_SELECTION') {
-    dismissSelection();
-  }
-});
+// chrome.scripting.executeScript re-runs this entire script on every injection.
+// A dismiss-then-rearm cycle on the same tab (no navigation) clears the
+// selection-active flag, so the background injects again — without this guard
+// that would register a second competing onMessage listener on top of the
+// still-alive first one, producing duplicate overlays. No sender check is
+// needed here: this extension declares no externally_connectable, so
+// onMessage can only ever fire for messages from its own background/content
+// contexts, never another extension or a web page.
+if (!window.__fontciaOverlayInjected) {
+  window.__fontciaOverlayInjected = true;
+
+  chrome.runtime.onMessage.addListener((message: { type?: string; tabId?: number }) => {
+    if (message?.type === 'ARM_SELECTION' && typeof message.tabId === 'number') {
+      armSelectionMode(message.tabId);
+    } else if (message?.type === 'DISMISS_SELECTION') {
+      dismissSelection();
+    }
+  });
+}
