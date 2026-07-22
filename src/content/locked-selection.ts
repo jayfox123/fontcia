@@ -26,6 +26,10 @@ export function renderLockedSelection(
   panel.className = 'fontcia-panel';
   panel.style.left = `${rect.x}px`;
   panel.style.top = `${rect.y + rect.height + 8}px`;
+  // Stop mouse events on the panel from bubbling to the drag surface underneath
+  // it, so interacting with panel content (e.g. a future scrollable area) can't
+  // be mistaken for a new drag gesture.
+  panel.addEventListener('mousedown', (event) => event.stopPropagation());
 
   const notch = document.createElement('div');
   notch.className = 'fontcia-notch';

@@ -111,4 +111,35 @@ describe('drag lifecycle', () => {
 
     expect(document.getElementById('fontcia-overlay-host')).toBeNull();
   });
+
+  it('ignores a second drag once a selection is already locked', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mouseup', 60, 40);
+
+    dispatchMouse(surface, 'mousedown', 100, 100);
+    dispatchMouse(surface, 'mousemove', 160, 140);
+    dispatchMouse(surface, 'mouseup', 160, 140);
+
+    expect(surface.querySelectorAll('.fontcia-box').length).toBe(1);
+    expect(surface.querySelectorAll('.fontcia-panel').length).toBe(1);
+  });
+
+  it('does not start a new drag when mousedown originates on the locked panel', () => {
+    armSelectionMode(1);
+    const surface = document.querySelector('#fontcia-overlay-host')?.shadowRoot?.querySelector('.fontcia-surface') as Element;
+
+    dispatchMouse(surface, 'mousedown', 10, 10);
+    dispatchMouse(surface, 'mouseup', 60, 40);
+
+    const panel = surface.querySelector('.fontcia-panel') as Element;
+    dispatchMouse(panel, 'mousedown', 15, 65);
+    dispatchMouse(panel, 'mousemove', 90, 120);
+    dispatchMouse(panel, 'mouseup', 90, 120);
+
+    expect(surface.querySelectorAll('.fontcia-box').length).toBe(1);
+    expect(surface.querySelectorAll('.fontcia-panel').length).toBe(1);
+  });
 });

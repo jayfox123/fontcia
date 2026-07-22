@@ -9,6 +9,7 @@ let shadowSurface: HTMLDivElement | null = null;
 let draftBox: HTMLDivElement | null = null;
 let dragStart: Point | null = null;
 let isDragging = false;
+let isLocked = false;
 
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape') {
@@ -17,7 +18,10 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 function handleMouseDown(event: MouseEvent): void {
-  if (!shadowSurface) return;
+  // Only one locked selection per armed session — a second drag is ignored
+  // until the first is dismissed, rather than stacking a duplicate box+panel.
+  if (!shadowSurface || isLocked) return;
+  draftBox?.remove();
   isDragging = true;
   dragStart = { x: event.clientX, y: event.clientY };
   draftBox = document.createElement('div');
@@ -45,6 +49,7 @@ function handleMouseUp(event: MouseEvent): void {
   if (isNoOpDrag(rect)) return;
 
   renderLockedSelection(shadowSurface, rect, dismissSelection);
+  isLocked = true;
 }
 
 function createOverlay(): void {
@@ -86,6 +91,7 @@ function teardownOverlay(): void {
   draftBox = null;
   dragStart = null;
   isDragging = false;
+  isLocked = false;
 }
 
 export function armSelectionMode(tabId: number): void {
