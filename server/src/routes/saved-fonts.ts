@@ -30,8 +30,8 @@ savedFontsRouter.post('/', async (req, res, next) => {
     if (typeof fontName !== 'string' || fontName.length === 0) {
       throw new ApiError(400, 'fontName is required');
     }
-    if (typeof confidence !== 'number') {
-      throw new ApiError(400, 'confidence is required');
+    if (typeof confidence !== 'number' || !Number.isInteger(confidence) || confidence < 0 || confidence > 100) {
+      throw new ApiError(400, 'confidence must be an integer between 0 and 100');
     }
     if (!Array.isArray(sources)) {
       throw new ApiError(400, 'sources must be an array');

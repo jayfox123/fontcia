@@ -83,6 +83,14 @@ describe('POST /saved-fonts', () => {
       .send({ confidence: 92, sources: [] });
     expect(res.status).toBe(400);
   });
+
+  it('rejects an out-of-range confidence instead of crashing', async () => {
+    const res = await request(app)
+      .post('/saved-fonts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fontName: 'Inter', confidence: 99999999999999, sources: [] });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('DELETE /saved-fonts/:id', () => {

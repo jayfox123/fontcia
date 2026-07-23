@@ -87,6 +87,21 @@ describe('POST /auth/login', () => {
     expect(res.status).toBe(401);
     expect(res.body.error).toBe('Invalid email or password');
   });
+
+  it('takes comparable time for unknown email vs wrong password (timing side-channel check)', async () => {
+    const start1 = Date.now();
+    await request(app).post('/auth/login').send({ email: 'nobody-timing-test@example.com', password: 'wrongpassword' });
+    const unknownEmailMs = Date.now() - start1;
+
+    const start2 = Date.now();
+    await request(app).post('/auth/login').send({ email: 'a@example.com', password: 'wrongpassword' });
+    const wrongPasswordMs = Date.now() - start2;
+
+    // Both paths should now pay the bcrypt cost, so the ratio shouldn't be extreme.
+    // Generous tolerance to avoid flakiness from normal timing jitter.
+    const ratio = Math.max(unknownEmailMs, wrongPasswordMs) / Math.max(1, Math.min(unknownEmailMs, wrongPasswordMs));
+    expect(ratio).toBeLessThan(5);
+  });
 });
 
 describe('POST /auth/refresh', () => {
@@ -133,11 +148,20 @@ describe('POST /auth/logout', () => {
 });
 
 describe('auth rate limiting', () => {
-  it('rejects the 11th login attempt within the rate-limit window', async () => {
-    for (let i = 0; i < 10; i++) {
-      await request(app).post('/auth/login').send({ email: 'a@example.com', password: 'wrong' });
-    }
-    const res = await request(app).post('/auth/login').send({ email: 'a@example.com', password: 'wrong' });
-    expect(res.status).toBe(429);
-  });
+  it(
+    'rejects the 11th login attempt within the rate-limit window',
+    async () => {
+      // This describe block doesn't sign up 'a@example.com' first, so every
+      // attempt here hits the "unknown email" path. Now that path pays a real
+      // bcrypt cost (to close the timing side-channel — see the login tests
+      // above), 11 sequential attempts with bcryptjs's pure-JS cost-12 hashing
+      // comfortably exceed vitest's default 5s test timeout, hence the bump.
+      for (let i = 0; i < 10; i++) {
+        await request(app).post('/auth/login').send({ email: 'a@example.com', password: 'wrong' });
+      }
+      const res = await request(app).post('/auth/login').send({ email: 'a@example.com', password: 'wrong' });
+      expect(res.status).toBe(429);
+    },
+    20000,
+  );
 });

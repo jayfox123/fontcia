@@ -22,6 +22,19 @@ export const loginRateLimit = createAuthRateLimit();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 
+// Used to pad the "unknown email" login path with the same bcrypt cost paid
+// by the "wrong password" path, so the two 401s aren't distinguishable by
+// timing. Lazily computed (and memoized) on first use rather than a
+// top-level `await`, since this project compiles with `module: "CommonJS"`,
+// which doesn't support top-level await.
+let dummyPasswordHashPromise: Promise<string> | null = null;
+function getDummyPasswordHash(): Promise<string> {
+  if (!dummyPasswordHashPromise) {
+    dummyPasswordHashPromise = hashPassword('dummy-password-for-timing-safety');
+  }
+  return dummyPasswordHashPromise;
+}
+
 interface TokenPairResponse {
   accessToken: string;
   refreshToken: string;
@@ -79,6 +92,9 @@ authRouter.post('/login', loginRateLimit, async (req, res, next) => {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
+      // Pay the same bcrypt cost as a real password comparison so this path
+      // isn't distinguishable from a wrong-password 401 by response timing.
+      await verifyPassword(password, await getDummyPasswordHash());
       throw new ApiError(401, 'Invalid email or password');
     }
 
