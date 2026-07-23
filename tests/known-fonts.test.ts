@@ -22,9 +22,19 @@ describe('findKnownFont', () => {
     expect(found?.name).toBe('Lato');
   });
 
+  it('matches a font with multiple alternate matchKeys via its second alias', () => {
+    const found = findKnownFont('Source Sans 3');
+    expect(found?.name).toBe('Source Sans Pro');
+  });
+
   it('returns null when nothing in the stack is known', () => {
     const found = findKnownFont('SomeUnknownFont, AnotherUnknownFont');
     expect(found).toBeNull();
+  });
+
+  it('encodes multi-word font names as +-joined slugs in source URLs', () => {
+    const openSans = KNOWN_FONTS.find((f) => f.name === 'Open Sans');
+    expect(openSans?.sources[0]?.url).toBe('https://fonts.google.com/specimen/Open+Sans');
   });
 
   it('seeds exactly the ten expected fonts', () => {
