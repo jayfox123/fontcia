@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderLockedSelection } from '../src/content/locked-selection';
-import type { ScanResult } from '../src/content/mock-scan';
+import type { ScanResult } from '../src/content/scan-types';
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -175,5 +175,24 @@ describe('renderLockedSelection', () => {
 
     expect(panel.querySelector('.fontcia-result-font')).toBeNull();
     expect(panel.querySelector('.fontcia-spinner')).not.toBeNull();
+  });
+
+  it('falls back to the no-match state if the scan promise rejects', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.reject(new Error('boom')));
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')).not.toBeNull();
   });
 });

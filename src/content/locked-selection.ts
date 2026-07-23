@@ -1,6 +1,6 @@
 import type { Rect } from '../shared/selection-box';
-import type { MatchResult, ScanResult } from './mock-scan';
-import { mockScan } from './mock-scan';
+import type { MatchResult, ScanResult } from './scan-types';
+import { resolveFontFromSelection } from './font-resolver';
 import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from './scan-dialogue';
 
 export interface LockedSelectionElements {
@@ -21,7 +21,7 @@ export function renderLockedSelection(
   rect: Rect,
   onDismiss: () => void,
   onRestart: () => void,
-  scanFn: (rect: Rect) => Promise<ScanResult> = mockScan,
+  scanFn: (rect: Rect) => Promise<ScanResult> = resolveFontFromSelection,
 ): LockedSelectionElements {
   const box = document.createElement('div');
   box.className = 'fontcia-box';
@@ -81,18 +81,24 @@ export function renderLockedSelection(
 
   function handleScan(): void {
     renderLoadingState(body);
-    scanFn(rect).then((result) => {
-      // An in-flight scan must not touch the DOM after the panel is dismissed
-      // (Esc, the close button, or an icon-click toggle-off) — all three
-      // converge on overlay.ts's teardownOverlay(), which calls dispose()
-      // before this promise can resolve into a stale render.
-      if (disposed) return;
-      if (result.status === 'match') {
-        showResult(result);
-      } else {
+    scanFn(rect)
+      .then((result) => {
+        // An in-flight scan must not touch the DOM after the panel is dismissed
+        // (Esc, the close button, or an icon-click toggle-off) — all three
+        // converge on overlay.ts's teardownOverlay(), which calls dispose()
+        // before this promise can resolve into a stale render.
+        if (disposed) return;
+        if (result.status === 'match') {
+          showResult(result);
+        } else {
+          renderNoMatchState(body, onRestart);
+        }
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        console.error('fontCIA: font resolution failed', error);
         renderNoMatchState(body, onRestart);
-      }
-    });
+      });
   }
 
   renderReadyState(body, handleScan);
