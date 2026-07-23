@@ -71,6 +71,13 @@ describe('restartSelection via New scan', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 150));
 
+    // Proves the mock actually intercepted resolveFontFromSelection rather than
+    // the real (jsdom-incompatible) resolver silently running, throwing, and
+    // falling into the no-match state instead — which would also render a
+    // '.fontcia-btn-secondary' button with "New scan" text, making the
+    // assertions below pass regardless of whether the mock is even wired up.
+    expect(surface.querySelector('.fontcia-result-font')?.textContent).toBe('Inter');
+
     const newScanBtn = Array.from(surface.querySelectorAll('.fontcia-btn-secondary')).find(
       (b) => b.textContent === 'New scan',
     ) as HTMLButtonElement;
