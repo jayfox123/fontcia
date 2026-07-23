@@ -3,6 +3,7 @@ import { corsMiddleware } from './middleware/cors';
 import { errorHandler } from './middleware/error-handler';
 import { authRouter } from './routes/auth';
 import { savedFontsRouter } from './routes/saved-fonts';
+import { scansRouter } from './routes/scans';
 
 export const app = express();
 
@@ -15,5 +16,6 @@ app.get('/health', (_req, res) => {
 
 app.use('/auth', authRouter);
 app.use('/saved-fonts', savedFontsRouter);
+app.use('/scans', scansRouter);
 
 app.use(errorHandler);
