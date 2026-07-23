@@ -195,4 +195,33 @@ describe('renderLockedSelection', () => {
 
     expect(panel.querySelector('.fontcia-no-match-message')).not.toBeNull();
   });
+
+  it('does not render the no-match fallback if dispose() is called before the scan promise rejects', async () => {
+    const container = document.createElement('div');
+    let rejectScan!: (error: Error) => void;
+    const scanFn = vi.fn(
+      () =>
+        new Promise<ScanResult>((_resolve, reject) => {
+          rejectScan = reject;
+        }),
+    );
+
+    const { panel, dispose } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    dispose();
+
+    rejectScan(new Error('boom'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')).toBeNull();
+    expect(panel.querySelector('.fontcia-spinner')).not.toBeNull();
+  });
 });
