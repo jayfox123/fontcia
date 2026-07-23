@@ -1,10 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app';
+import { signupRateLimit, loginRateLimit } from '../src/routes/auth';
 import { resetDb } from './helpers/reset-db';
+
+// supertest's requests to an in-process app are always seen by Express as
+// connections from this IPv4-mapped-IPv6 loopback address. `resetDb()` only
+// truncates DB tables — it doesn't clear the auth rate limiters' in-memory
+// counters, which otherwise persist across every test in this file (a single
+// vitest worker) and would eventually 429 unrelated later tests.
+const TEST_CLIENT_IP = '::ffff:127.0.0.1';
 
 beforeEach(async () => {
   await resetDb();
+  signupRateLimit.resetKey(TEST_CLIENT_IP);
+  loginRateLimit.resetKey(TEST_CLIENT_IP);
 });
 
 describe('POST /auth/signup', () => {
@@ -40,6 +50,16 @@ describe('POST /auth/signup', () => {
       .post('/auth/signup')
       .send({ email: 'not-an-email', password: 'password123' });
     expect(res.status).toBe(400);
+  });
+
+  it('handles concurrent duplicate signups without a 500', async () => {
+    const [res1, res2] = await Promise.all([
+      request(app).post('/auth/signup').send({ email: 'race@example.com', password: 'password123' }),
+      request(app).post('/auth/signup').send({ email: 'race@example.com', password: 'password123' }),
+    ]);
+
+    const statuses = [res1.status, res2.status].sort();
+    expect(statuses).toEqual([201, 409]);
   });
 });
 

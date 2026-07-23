@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { hashPassword, verifyPassword } from '../lib/password';
 import {
@@ -12,8 +13,11 @@ import { ApiError } from '../middleware/error-handler';
 
 export const authRouter = Router();
 
-const signupRateLimit = createAuthRateLimit();
-const loginRateLimit = createAuthRateLimit();
+// Exported so tests can reset these in-memory counters between test cases via
+// `.resetKey(ip)` — `resetDb()` only clears DB tables, not this rate-limit state,
+// and it persists for the lifetime of the test file's single vitest worker.
+export const signupRateLimit = createAuthRateLimit();
+export const loginRateLimit = createAuthRateLimit();
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -57,6 +61,10 @@ authRouter.post('/signup', signupRateLimit, async (req, res, next) => {
     const tokens = await issueTokenPair(user.id, user.email);
     res.status(201).json({ user: { id: user.id, email: user.email }, ...tokens });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      next(new ApiError(409, 'Email already registered'));
+      return;
+    }
     next(error);
   }
 });
