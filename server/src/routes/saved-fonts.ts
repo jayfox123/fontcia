@@ -52,13 +52,14 @@ savedFontsRouter.post('/', async (req, res, next) => {
 
 savedFontsRouter.delete('/:id', async (req, res, next) => {
   try {
-    const savedFont = await prisma.savedFont.findUnique({ where: { id: req.params.id } });
+    const result = await prisma.savedFont.deleteMany({
+      where: { id: req.params.id, userId: req.userId },
+    });
 
-    if (!savedFont || savedFont.userId !== req.userId) {
+    if (result.count === 0) {
       throw new ApiError(404, 'Saved font not found');
     }
 
-    await prisma.savedFont.delete({ where: { id: req.params.id } });
     res.status(204).send();
   } catch (error) {
     next(error);

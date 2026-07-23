@@ -1,12 +1,22 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app';
+import { signupRateLimit } from '../src/routes/auth';
 import { resetDb } from './helpers/reset-db';
+
+// supertest's requests to an in-process app are always seen by Express as
+// connections from this IPv4-mapped-IPv6 loopback address. `resetDb()` only
+// truncates DB tables — it doesn't clear the auth rate limiter's in-memory
+// counter, which otherwise persists across every test in this file (a single
+// vitest worker) and would eventually 429 the `beforeEach` signup call. See
+// the same fix in `auth.test.ts`.
+const TEST_CLIENT_IP = '::ffff:127.0.0.1';
 
 let accessToken: string;
 
 beforeEach(async () => {
   await resetDb();
+  signupRateLimit.resetKey(TEST_CLIENT_IP);
   const signupRes = await request(app)
     .post('/auth/signup')
     .send({ email: 'a@example.com', password: 'password123' });
@@ -111,5 +121,22 @@ describe('DELETE /saved-fonts/:id', () => {
       .delete(`/saved-fonts/${saveRes.body.savedFont.id}`)
       .set('Authorization', `Bearer ${otherToken}`);
     expect(deleteRes.status).toBe(404);
+  });
+
+  it('returns 404 (not 500) when deleting the same font twice', async () => {
+    const saveRes = await request(app)
+      .post('/saved-fonts')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ fontName: 'Inter', confidence: 92, sources: [] });
+
+    const firstDelete = await request(app)
+      .delete(`/saved-fonts/${saveRes.body.savedFont.id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(firstDelete.status).toBe(204);
+
+    const secondDelete = await request(app)
+      .delete(`/saved-fonts/${saveRes.body.savedFont.id}`)
+      .set('Authorization', `Bearer ${accessToken}`);
+    expect(secondDelete.status).toBe(404);
   });
 });
