@@ -123,20 +123,46 @@ describe('DELETE /saved-fonts/:id', () => {
     expect(deleteRes.status).toBe(404);
   });
 
-  it('returns 404 (not 500) when deleting the same font twice', async () => {
-    const saveRes = await request(app)
-      .post('/saved-fonts')
-      .set('Authorization', `Bearer ${accessToken}`)
-      .send({ fontName: 'Inter', confidence: 92, sources: [] });
+  it('returns exactly one 204 and one 404 when deleting the same font concurrently', async () => {
+    // Two `request(app)` calls each spin up their own throwaway listener, and
+    // that per-call setup/teardown overhead is enough to serialize the pair
+    // before they ever reach the DB — verified empirically: with that
+    // pattern this test stayed green even against a deliberately-reverted,
+    // genuinely racy findUnique-then-delete handler. Binding one real
+    // listener up front and reusing it via a persistent agent removes that
+    // artificial serialization.
+    //
+    // Even then, a single attempt in a fresh process is unreliable: the
+    // very first race attempt after a cold start consistently does NOT
+    // interleave tightly enough to trigger the bug (verified: 6/6 fresh
+    // `tsx` process runs were clean on attempt 1 against the reverted
+    // buggy handler), while every subsequent attempt in the same process
+    // reliably does (100% across those same 6 runs, 3 follow-up attempts
+    // each). Since vitest reruns this file as a fresh process each time,
+    // repeating the attempt here is what makes this a reliable regression
+    // test instead of a coin flip that happens to pass in CI. The atomic
+    // `deleteMany` fix is race-proof regardless of warm-up state (16/16
+    // clean across both cold and warm attempts).
+    const server = app.listen(0);
+    try {
+      const agent = request.agent(server);
 
-    const firstDelete = await request(app)
-      .delete(`/saved-fonts/${saveRes.body.savedFont.id}`)
-      .set('Authorization', `Bearer ${accessToken}`);
-    expect(firstDelete.status).toBe(204);
+      for (let i = 0; i < 4; i++) {
+        const saveRes = await request(app)
+          .post('/saved-fonts')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .send({ fontName: `Concurrent${i}`, confidence: 92, sources: [] });
 
-    const secondDelete = await request(app)
-      .delete(`/saved-fonts/${saveRes.body.savedFont.id}`)
-      .set('Authorization', `Bearer ${accessToken}`);
-    expect(secondDelete.status).toBe(404);
+        const [first, second] = await Promise.all([
+          agent.delete(`/saved-fonts/${saveRes.body.savedFont.id}`).set('Authorization', `Bearer ${accessToken}`),
+          agent.delete(`/saved-fonts/${saveRes.body.savedFont.id}`).set('Authorization', `Bearer ${accessToken}`),
+        ]);
+
+        const statuses = [first.status, second.status].sort();
+        expect(statuses).toEqual([204, 404]);
+      }
+    } finally {
+      server.close();
+    }
   });
 });
