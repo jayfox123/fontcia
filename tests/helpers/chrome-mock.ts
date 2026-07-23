@@ -44,6 +44,8 @@ export function createChromeMock() {
       onClicked: {
         addListener: vi.fn((_fn: (tab: { id: number }) => void) => {}),
       },
+      setBadgeText: vi.fn(async (_details: { text: string }) => {}),
+      setBadgeBackgroundColor: vi.fn(async (_details: { color: string }) => {}),
     },
   };
 }

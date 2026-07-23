@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createChromeMock } from './helpers/chrome-mock';
 import { moduleLoadChromeMock } from './setup';
-import { handleIconClick } from '../src/background/service-worker';
+import { handleIconClick, isInjectableUrl } from '../src/background/service-worker';
 
 let chromeMock: ReturnType<typeof createChromeMock>;
 
@@ -12,7 +12,7 @@ beforeEach(() => {
 
 describe('handleIconClick', () => {
   it('arms a fresh tab: marks it active, injects the content script, sends ARM_SELECTION', async () => {
-    await handleIconClick({ id: 7 } as chrome.tabs.Tab);
+    await handleIconClick({ id: 7, url: 'https://example.com/' } as chrome.tabs.Tab);
 
     expect(chromeMock.scripting.executeScript).toHaveBeenCalledWith({
       target: { tabId: 7 },
@@ -27,7 +27,7 @@ describe('handleIconClick', () => {
   it('toggles off an already-active tab instead of re-injecting', async () => {
     await chromeMock.storage.session.set({ 'fontcia-active:7': true });
 
-    await handleIconClick({ id: 7 } as chrome.tabs.Tab);
+    await handleIconClick({ id: 7, url: 'https://example.com/' } as chrome.tabs.Tab);
 
     expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
     expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(7, { type: 'DISMISS_SELECTION' });
@@ -38,6 +38,60 @@ describe('handleIconClick', () => {
 
     expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
     expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt injection on a restricted chrome:// URL, and flashes a badge', async () => {
+    await handleIconClick({ id: 7, url: 'chrome://extensions' } as chrome.tabs.Tab);
+
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+    expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(chromeMock.action.setBadgeText).toHaveBeenCalledWith({ text: '!' });
+  });
+
+  it('does not attempt injection on a chrome-extension:// URL', async () => {
+    await handleIconClick({ id: 7, url: 'chrome-extension://abcdefghijklmnop/options.html' } as chrome.tabs.Tab);
+
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt injection on the Chrome Web Store', async () => {
+    await handleIconClick({ id: 7, url: 'https://chrome.google.com/webstore/detail/abc' } as chrome.tabs.Tab);
+
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('treats a tab with no url as non-injectable', async () => {
+    await handleIconClick({ id: 7 } as chrome.tabs.Tab);
+
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
+describe('isInjectableUrl', () => {
+  it('allows ordinary http/https pages', () => {
+    expect(isInjectableUrl('https://example.com/')).toBe(true);
+    expect(isInjectableUrl('http://example.com/')).toBe(true);
+  });
+
+  it('rejects chrome:// pages', () => {
+    expect(isInjectableUrl('chrome://extensions')).toBe(false);
+  });
+
+  it('rejects chrome-extension:// pages', () => {
+    expect(isInjectableUrl('chrome-extension://abcdefghijklmnop/options.html')).toBe(false);
+  });
+
+  it('rejects the Chrome Web Store', () => {
+    expect(isInjectableUrl('https://chrome.google.com/webstore/detail/abc')).toBe(false);
+  });
+
+  it('rejects file:// URLs', () => {
+    expect(isInjectableUrl('file:///Users/me/test.html')).toBe(false);
+  });
+
+  it('rejects undefined and malformed URLs', () => {
+    expect(isInjectableUrl(undefined)).toBe(false);
+    expect(isInjectableUrl('not a url')).toBe(false);
   });
 });
 
