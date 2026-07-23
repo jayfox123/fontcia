@@ -1,20 +1,15 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { Rect } from '../src/shared/selection-box';
-import type { ScanResult } from '../src/content/mock-scan';
+import type { ScanResult } from '../src/content/scan-types';
 
-vi.mock('../src/content/mock-scan', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/content/mock-scan')>();
+vi.mock('../src/content/font-resolver', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/content/font-resolver')>();
   return {
     ...actual,
-    mockScan: vi.fn(
-      (rect: Rect) =>
+    resolveFontFromSelection: vi.fn(
+      () =>
         new Promise<ScanResult>((resolve) => {
           setTimeout(() => {
-            resolve(
-              rect.width >= actual.NO_MATCH_WIDTH_THRESHOLD_PX
-                ? { status: 'match', fontName: 'Inter', confidence: 92, sources: [] }
-                : { status: 'no-match' },
-            );
+            resolve({ status: 'match', fontName: 'Inter', confidence: 92, sources: [] });
           }, 20);
         }),
     ),
