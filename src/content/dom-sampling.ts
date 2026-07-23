@@ -29,6 +29,17 @@ function readComputedFont(el: Element): FontReading {
   };
 }
 
+// Only true for an element with its OWN rendered text, not merely an
+// ancestor whose descendants happen to contain text somewhere. Without this,
+// the elementsFromPoint fallback below can walk all the way up to <body>
+// (whose transitive textContent is nearly always non-empty) and return a
+// font completely disconnected from the sampled pixel.
+function hasDirectText(el: Element): boolean {
+  return Array.from(el.childNodes).some(
+    (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim().length > 0,
+  );
+}
+
 // The one function in this file that touches real browser hit-testing APIs.
 // jsdom has no layout engine — it doesn't implement caretRangeFromPoint at
 // all, and elementsFromPoint always returns an empty list — so this cannot
@@ -43,14 +54,19 @@ export function readFontAtPoint(point: Point): FontReading | null {
   if (typeof doc.caretRangeFromPoint === 'function') {
     const range = doc.caretRangeFromPoint(point.x, point.y);
     const node = range?.startContainer;
-    const el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element | null);
+    const el =
+      node && node.nodeType === Node.TEXT_NODE
+        ? node.parentElement
+        : node instanceof Element
+          ? node
+          : null;
     if (el) {
       return readComputedFont(el);
     }
   }
 
   const elements = document.elementsFromPoint(point.x, point.y);
-  const textEl = elements.find((el) => (el.textContent ?? '').trim().length > 0);
+  const textEl = elements.find(hasDirectText);
   return textEl ? readComputedFont(textEl) : null;
 }
 
