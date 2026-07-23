@@ -49,4 +49,20 @@ describe('POST /scans', () => {
     const scan = await prisma.scan.findUnique({ where: { id: res.body.id } });
     expect(scan?.userId).toBeNull();
   });
+
+  it('stores null confidence instead of crashing on an out-of-range value', async () => {
+    const res = await request(app).post('/scans').send({ status: 'match', confidence: 99999999999999 });
+    expect(res.status).toBe(201);
+
+    const scan = await prisma.scan.findUnique({ where: { id: res.body.id } });
+    expect(scan?.confidence).toBeNull();
+  });
+
+  it('stores null confidence instead of silently truncating a non-integer value', async () => {
+    const res = await request(app).post('/scans').send({ status: 'match', confidence: 92.7 });
+    expect(res.status).toBe(201);
+
+    const scan = await prisma.scan.findUnique({ where: { id: res.body.id } });
+    expect(scan?.confidence).toBeNull();
+  });
 });

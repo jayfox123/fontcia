@@ -17,12 +17,17 @@ scansRouter.post('/', optionalAuth, async (req, res, next) => {
       throw new ApiError(400, "status must be 'match' or 'no-match'");
     }
 
+    const validConfidence =
+      typeof confidence === 'number' && Number.isInteger(confidence) && confidence >= 0 && confidence <= 100
+        ? confidence
+        : null;
+
     const scan = await prisma.scan.create({
       data: {
         userId: req.userId ?? null,
         status,
         fontName: typeof fontName === 'string' ? fontName : null,
-        confidence: typeof confidence === 'number' ? confidence : null,
+        confidence: validConfidence,
       },
     });
 
