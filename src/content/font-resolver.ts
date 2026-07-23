@@ -57,8 +57,16 @@ export function resolveFromReadings(readings: FontReading[]): ScanResult {
 // resolveFromReadings above (the actual decision logic) is fully covered;
 // this is verified end-to-end only by the manual Chrome checklist.
 export function resolveFontFromSelection(rect: Rect): Promise<ScanResult> {
-  const result = resolveFromReadings(sampleRect(rect));
+  // sampleRect/resolveFromReadings must run *inside* the executor, not before
+  // it: computing the result first and only then constructing the Promise
+  // means a throw from the real DOM APIs (caretRangeFromPoint,
+  // elementsFromPoint, getComputedStyle — none of which are wrapped in a
+  // try/catch) would escape as a synchronous exception out of this function
+  // rather than a rejected promise. locked-selection.ts's handleScan relies
+  // on scanFn(rect) always returning a promise it can attach .catch() to —
+  // a synchronous throw here would bypass that entirely.
   return new Promise((resolve) => {
+    const result = resolveFromReadings(sampleRect(rect));
     setTimeout(() => resolve(result), MIN_SCAN_DURATION_MS);
   });
 }
