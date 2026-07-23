@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from '../src/content/scan-dialogue';
-import type { MatchResult } from '../src/content/mock-scan';
+import type { MatchResult } from '../src/content/scan-types';
 
 describe('renderReadyState', () => {
   it('renders a Scan button that calls onScan when clicked', () => {

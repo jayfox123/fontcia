@@ -1,4 +1,4 @@
-import type { MatchResult } from './mock-scan';
+import type { MatchResult } from './scan-types';
 
 export function renderReadyState(body: HTMLElement, onScan: () => void): void {
   body.replaceChildren();
