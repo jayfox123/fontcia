@@ -6,15 +6,16 @@ let chromeMock: ReturnType<typeof createChromeMock>;
 // This hook does vi.resetModules() + a dynamic import() of src/content/overlay.ts, which
 // re-transforms and re-executes its whole module graph and registers a fresh
 // chrome.runtime.onMessage listener. That's fast in isolation but under full-suite CPU
-// contention it can take several seconds, occasionally exceeding Vitest's default 10000ms
-// per-hook timeout. A killed-by-timeout hook doesn't cancel its in-flight import() promise
-// (JS promises aren't cancellable) - that orphaned import can go on to register a listener
+// contention it can take several seconds, occasionally exceeding Vitest's default per-hook
+// timeout. A killed-by-timeout hook doesn't cancel its in-flight import() promise (JS
+// promises aren't cancellable) - that orphaned import can go on to register a listener
 // bound to a later test's (now stale) chrome mock instance, producing the same class of
 // cascading failure already fixed twice on this branch for this exact
 // vi.resetModules()+dynamic-import() pattern (tests/service-worker.test.ts's handleApiMessage
 // describe, fixed in d19694b; tests/login.test.ts's login page describe, fixed in 7d9e511).
-// Giving this hook a generous timeout keeps it from being killed under contention in the
-// first place.
+// This is why the suite-wide testTimeout/hookTimeout in vitest.config.ts are set generously
+// rather than left at Vitest's defaults - see the comment there for the other files that
+// share this risk.
 beforeEach(async () => {
   chromeMock = createChromeMock();
   (globalThis as unknown as { chrome: unknown }).chrome = chromeMock;
@@ -27,7 +28,7 @@ beforeEach(async () => {
   // an earlier test would stay bound to that test's (now stale) chrome mock instance.
   vi.resetModules();
   await import('../src/content/overlay');
-}, 20000); // generous hook timeout; see comment above
+});
 
 afterEach(() => {
   document.body.innerHTML = '';
@@ -79,6 +80,4 @@ describe('runtime message wiring', () => {
 
     expect(document.querySelectorAll('#fontcia-overlay-host').length).toBe(1);
   });
-}, 20000); // generous per-test timeout inherited by every `it` above - the last one re-runs the
-// same vi.resetModules()+dynamic-import() pattern inline, which is subject to the per-test
-// timeout rather than the per-hook one; see the comment above the outer beforeEach
+});

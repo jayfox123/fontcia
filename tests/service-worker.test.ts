@@ -105,10 +105,10 @@ describe('isInjectableUrl', () => {
 // cancellable) — that orphaned import can then resolve into the *next* test's
 // module registry state after that test's own resetModules()/doMock() has already
 // run, handing it a stale/unmocked api-client and producing a cascading
-// "X is not a spy" failure with no relation to that test's own logic. Giving
-// every test in this block a generous timeout keeps them from being killed
-// under contention in the first place, which removes the trigger for both
-// failure modes.
+// "X is not a spy" failure with no relation to that test's own logic. This is
+// why the suite-wide testTimeout in vitest.config.ts is set generously rather
+// than left at Vitest's default - see the comment there for the other files
+// that share this risk.
 describe('handleApiMessage', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -285,7 +285,7 @@ describe('handleApiMessage', () => {
 
     expect(result).toEqual({ ok: false, error: 'Network error — please try again' });
   });
-}, 20000); // generous per-test timeout inherited by every `it` above; see comment before this describe
+});
 
 describe('module load side effects', () => {
   it('grants content scripts access to chrome.storage.session on module load', () => {

@@ -70,9 +70,13 @@ export async function initLoginPage(): Promise<void> {
       .catch((error: unknown) => console.error('fontCIA: logout failed', error));
   });
 
-  const authState = await sendMessage<{ loggedIn: boolean; email?: string }>({ type: 'GET_AUTH_STATE' });
-  if (authState.ok && authState.data.loggedIn && authState.data.email) {
-    showLoggedInView(authState.data.email);
+  try {
+    const authState = await sendMessage<{ loggedIn: boolean; email?: string }>({ type: 'GET_AUTH_STATE' });
+    if (authState.ok && authState.data.loggedIn && authState.data.email) {
+      showLoggedInView(authState.data.email);
+    }
+  } catch (error) {
+    console.error('fontCIA: failed to check auth state on load', error);
   }
 }
 

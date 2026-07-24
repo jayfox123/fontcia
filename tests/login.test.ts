@@ -46,8 +46,9 @@ beforeEach(() => {
 // mockResolvedValueOnce queue has already been set up, consuming a response meant for that
 // test and producing a cascading "Cannot read properties of null/undefined" failure with no
 // relation to that test's own logic (same failure class fixed for handleApiMessage in
-// tests/service-worker.test.ts; see the comment there). Giving every test in this block a
-// generous timeout keeps them from being killed under contention in the first place.
+// tests/service-worker.test.ts; see the comment there). This is why the suite-wide
+// testTimeout in vitest.config.ts is set generously rather than left at Vitest's default -
+// see the comment there for the other files that share this risk.
 describe('login page', () => {
   it('shows the form view when GET_AUTH_STATE reports logged out', async () => {
     chromeMock.runtime.sendMessage.mockResolvedValueOnce({ ok: true, data: { loggedIn: false } });
@@ -157,4 +158,16 @@ describe('login page', () => {
     expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'LOGOUT' });
     expect((document.getElementById('formView') as HTMLElement).hidden).toBe(false);
   });
-}, 20000); // generous per-test timeout inherited by every `it` above; see comment before this describe
+
+  it('falls back to the form view instead of hanging when GET_AUTH_STATE rejects on load', async () => {
+    chromeMock.runtime.sendMessage.mockRejectedValueOnce(new Error('service worker unreachable'));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await loadLoginPage();
+
+    expect((document.getElementById('formView') as HTMLElement).hidden).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+});
