@@ -36,6 +36,18 @@ beforeEach(() => {
   (globalThis as unknown as { chrome: unknown }).chrome = chromeMock;
 });
 
+// Every test here (via loadLoginPage) does vi.resetModules() + a dynamic import() of
+// src/login/login.ts, whose module body calls initLoginPage() on load, which itself awaits
+// a GET_AUTH_STATE round trip through the mocked chrome.runtime.sendMessage. That's fast in
+// isolation but under full-suite CPU contention it can take several seconds, occasionally
+// exceeding Vitest's default 5000ms per-test timeout. A killed-by-timeout test doesn't cancel
+// its in-flight import()/initLoginPage() promise chain (JS promises aren't cancellable) - that
+// orphaned chain can go on to call the mocked sendMessage again after the *next* test's own
+// mockResolvedValueOnce queue has already been set up, consuming a response meant for that
+// test and producing a cascading "Cannot read properties of null/undefined" failure with no
+// relation to that test's own logic (same failure class fixed for handleApiMessage in
+// tests/service-worker.test.ts; see the comment there). Giving every test in this block a
+// generous timeout keeps them from being killed under contention in the first place.
 describe('login page', () => {
   it('shows the form view when GET_AUTH_STATE reports logged out', async () => {
     chromeMock.runtime.sendMessage.mockResolvedValueOnce({ ok: true, data: { loggedIn: false } });
@@ -145,4 +157,4 @@ describe('login page', () => {
     expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'LOGOUT' });
     expect((document.getElementById('formView') as HTMLElement).hidden).toBe(false);
   });
-});
+}, 20000); // generous per-test timeout inherited by every `it` above; see comment before this describe
