@@ -95,6 +95,20 @@ describe('isInjectableUrl', () => {
   });
 });
 
+// Each test here does vi.resetModules() + vi.doMock() + a dynamic import() of
+// service-worker.ts, which re-transforms and re-executes its whole module graph
+// (api-client -> auth-storage / shared/api-config, session-state, scan-types).
+// That's cheap in isolation but under full-suite CPU contention (many test files'
+// worker threads competing for the CPU) it can take several seconds, occasionally
+// exceeding Vitest's default 5000ms per-test timeout. A killed-by-timeout test
+// doesn't actually cancel its in-flight import() promise (JS promises aren't
+// cancellable) — that orphaned import can then resolve into the *next* test's
+// module registry state after that test's own resetModules()/doMock() has already
+// run, handing it a stale/unmocked api-client and producing a cascading
+// "X is not a spy" failure with no relation to that test's own logic. Giving
+// every test in this block a generous timeout keeps them from being killed
+// under contention in the first place, which removes the trigger for both
+// failure modes.
 describe('handleApiMessage', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -252,7 +266,7 @@ describe('handleApiMessage', () => {
 
     expect(result).toEqual({ ok: false, error: 'Unknown message type' });
   });
-});
+}, 20000); // generous per-test timeout inherited by every `it` above; see comment before this describe
 
 describe('module load side effects', () => {
   it('grants content scripts access to chrome.storage.session on module load', () => {
