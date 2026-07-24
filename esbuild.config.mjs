@@ -19,4 +19,14 @@ await esbuild.build({
   target: 'chrome116',
 });
 
+await esbuild.build({
+  entryPoints: { login: 'src/login/login.ts' },
+  outdir: 'dist/login',
+  bundle: true,
+  format: 'iife',
+  target: 'chrome116',
+});
+
+mkdirSync('dist/login', { recursive: true });
+copyFileSync('src/login/login.html', 'dist/login/login.html');
 copyFileSync('manifest.json', 'dist/manifest.json');
