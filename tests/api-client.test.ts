@@ -130,6 +130,45 @@ describe('apiFetch', () => {
     const refreshCalls = fetchMock.mock.calls.filter(([url]) => url === 'http://localhost:3001/auth/refresh');
     expect(refreshCalls).toHaveLength(1);
   });
+
+  it('does not resurrect a session if logout happens while a refresh is in flight', async () => {
+    await setStoredAuth(STORED);
+    let resolveRefresh!: (value: Response) => void;
+    const refreshPromise = new Promise<Response>((resolve) => {
+      resolveRefresh = resolve;
+    });
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'Unauthorized' })) // original request 401s
+      .mockReturnValueOnce(refreshPromise) // /auth/refresh call, held open
+      .mockResolvedValueOnce(emptyResponse(204)) // /auth/logout call, fired while the refresh above is in flight
+      .mockResolvedValueOnce(jsonResponse(200, { savedFonts: [] })); // only consumed if the bug retries the original request
+
+    const apiFetchPromise = apiFetch('/saved-fonts', { method: 'GET', auth: 'required' });
+
+    // Drain the microtask queue until apiFetch has actually reached the
+    // held-open refresh call. This can't overshoot: refreshPromise stays
+    // pending, so execution cannot progress past it no matter how many
+    // extra ticks we drain — that's what makes this deterministic rather
+    // than a guess at a magic tick count.
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve();
+    }
+    expect(fetchMock.mock.calls.some(([url]) => url === 'http://localhost:3001/auth/refresh')).toBe(true);
+
+    // Log out while that refresh is still in flight.
+    await logout();
+
+    // Now let the stale refresh resolve successfully.
+    resolveRefresh(
+      jsonResponse(200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresAt: '2026-01-02T00:00:00.000Z' }),
+    );
+
+    await apiFetchPromise;
+
+    // The logout must stick — the stale refresh must not have written new tokens back.
+    await expect(getStoredAuth()).resolves.toBeNull();
+  });
 });
 
 describe('signup / login', () => {

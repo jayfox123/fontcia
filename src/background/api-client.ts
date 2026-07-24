@@ -41,6 +41,13 @@ async function doRefresh(): Promise<boolean> {
 
   const { status, json } = await rawRequest('/auth/refresh', 'POST', { refreshToken: stored.refreshToken }, null);
 
+  const current = await getStoredAuth();
+  if (!current || current.refreshToken !== stored.refreshToken) {
+    // Storage changed underneath us (a logout or a fresh login happened while
+    // this refresh was in flight) — don't clobber whatever is there now.
+    return false;
+  }
+
   if (status !== 200) {
     await clearStoredAuth();
     return false;
