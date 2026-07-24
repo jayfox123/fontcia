@@ -10,5 +10,12 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-  "permissions": ["activeTab", "scripting", "storage"]
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost:3001/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["login/login.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
