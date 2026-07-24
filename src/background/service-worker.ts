@@ -75,23 +75,35 @@ export async function handleIconClick(tab: chrome.tabs.Tab): Promise<void> {
 chrome.action.onClicked.addListener(handleIconClick);
 
 export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse<unknown>> {
-  switch (message.type) {
-    case 'SIGNUP':
-      return signup(message.email, message.password);
-    case 'LOGIN':
-      return login(message.email, message.password);
-    case 'LOGOUT':
-      return logout();
-    case 'GET_AUTH_STATE':
-      return getAuthState();
-    case 'SAVE_FONT':
-      return saveFont(message.fontName, message.confidence, message.sources);
-    case 'DELETE_SAVED_FONT':
-      return deleteSavedFont(message.id);
-    case 'LOG_SCAN':
-      return logScan(message.status, message.fontName, message.confidence);
-    default:
-      return { ok: false, error: 'Unknown message type' };
+  try {
+    switch (message.type) {
+      case 'SIGNUP':
+        return await signup(message.email, message.password);
+      case 'LOGIN':
+        return await login(message.email, message.password);
+      case 'LOGOUT':
+        return await logout();
+      case 'GET_AUTH_STATE':
+        return await getAuthState();
+      case 'SAVE_FONT':
+        return await saveFont(message.fontName, message.confidence, message.sources);
+      case 'DELETE_SAVED_FONT':
+        return await deleteSavedFont(message.id);
+      case 'LOG_SCAN':
+        return await logScan(message.status, message.fontName, message.confidence);
+      default:
+        return { ok: false, error: 'Unknown message type' };
+    }
+  } catch (error) {
+    // apiFetch/rawRequest only guard res.json() parsing — a network failure
+    // (offline, dev server down, DNS error) throws inside fetch() itself and
+    // would otherwise propagate as a rejected promise. The chrome.runtime.onMessage
+    // listener below has no way to recover from a rejection (sendResponse would
+    // never get called, and the caller hangs until Chrome reports a port-closed
+    // error), so handleApiMessage's contract is to never reject — always resolve
+    // to a valid ApiResponse, for any caller, not just the onMessage listener.
+    console.error('fontCIA: handleApiMessage failed', error);
+    return { ok: false, error: 'Network error — please try again' };
   }
 }
 

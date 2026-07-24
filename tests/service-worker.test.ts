@@ -266,6 +266,25 @@ describe('handleApiMessage', () => {
 
     expect(result).toEqual({ ok: false, error: 'Unknown message type' });
   });
+
+  it('returns a network-error response instead of rejecting when the underlying api-client call throws', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(async () => {
+        throw new Error('fetch failed');
+      }),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+
+    const result = await handleApiMessage({ type: 'SIGNUP', email: 'a@example.com', password: 'password123' });
+
+    expect(result).toEqual({ ok: false, error: 'Network error — please try again' });
+  });
 }, 20000); // generous per-test timeout inherited by every `it` above; see comment before this describe
 
 describe('module load side effects', () => {
