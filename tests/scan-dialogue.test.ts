@@ -52,7 +52,7 @@ describe('renderResultState', () => {
   it('renders the font name, confidence, and all sources', () => {
     const body = document.createElement('div');
 
-    renderResultState(body, result, false, vi.fn(), vi.fn());
+    renderResultState(body, result, false, vi.fn(), vi.fn(), true, vi.fn());
 
     expect(body.querySelector('.fontcia-result-font')?.textContent).toBe('Inter');
     expect(body.querySelector('.fontcia-confidence')?.textContent).toBe('92% confidence');
@@ -62,11 +62,11 @@ describe('renderResultState', () => {
     expect((links[0] as HTMLAnchorElement).href).toBe('https://fonts.google.com/specimen/Inter');
   });
 
-  it('shows unsaved state and calls onToggleSave on click', () => {
+  it('shows unsaved state and calls onToggleSave on click when logged in', () => {
     const body = document.createElement('div');
     const onToggleSave = vi.fn();
 
-    renderResultState(body, result, false, onToggleSave, vi.fn());
+    renderResultState(body, result, false, onToggleSave, vi.fn(), true, vi.fn());
 
     const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
     expect(saveBtn.textContent).toBe('☆ Save');
@@ -75,10 +75,10 @@ describe('renderResultState', () => {
     expect(onToggleSave).toHaveBeenCalledOnce();
   });
 
-  it('shows saved state when saved is true', () => {
+  it('shows saved state when saved is true and logged in', () => {
     const body = document.createElement('div');
 
-    renderResultState(body, result, true, vi.fn(), vi.fn());
+    renderResultState(body, result, true, vi.fn(), vi.fn(), true, vi.fn());
 
     const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
     expect(saveBtn.textContent).toBe('★ Saved');
@@ -88,13 +88,34 @@ describe('renderResultState', () => {
     const body = document.createElement('div');
     const onNewScan = vi.fn();
 
-    renderResultState(body, result, false, vi.fn(), onNewScan);
+    renderResultState(body, result, false, vi.fn(), onNewScan, true, vi.fn());
 
     const newScanBtn = body.querySelector('.fontcia-btn-secondary') as HTMLButtonElement;
     expect(newScanBtn.textContent).toBe('New scan');
 
     newScanBtn.click();
     expect(onNewScan).toHaveBeenCalledOnce();
+  });
+
+  it('shows a "Log in to save" button instead of Save/Saved when not logged in', () => {
+    const body = document.createElement('div');
+
+    renderResultState(body, result, false, vi.fn(), vi.fn(), false, vi.fn());
+
+    const loginBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    expect(loginBtn.textContent).toBe('Log in to save');
+  });
+
+  it('calls onLoginPrompt when "Log in to save" is clicked', () => {
+    const body = document.createElement('div');
+    const onLoginPrompt = vi.fn();
+
+    renderResultState(body, result, false, vi.fn(), vi.fn(), false, onLoginPrompt);
+
+    const loginBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    loginBtn.click();
+
+    expect(onLoginPrompt).toHaveBeenCalledOnce();
   });
 });
 

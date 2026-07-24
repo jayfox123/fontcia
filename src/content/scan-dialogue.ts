@@ -27,6 +27,8 @@ export function renderResultState(
   saved: boolean,
   onToggleSave: () => void,
   onNewScan: () => void,
+  isLoggedIn: boolean,
+  onLoginPrompt: () => void,
 ): void {
   body.replaceChildren();
 
@@ -58,12 +60,21 @@ export function renderResultState(
   const actions = document.createElement('div');
   actions.className = 'fontcia-result-actions';
 
-  const saveBtn = document.createElement('button');
-  saveBtn.type = 'button';
-  saveBtn.className = 'fontcia-btn fontcia-btn-primary';
-  saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
-  saveBtn.addEventListener('click', onToggleSave);
-  actions.appendChild(saveBtn);
+  if (isLoggedIn) {
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'fontcia-btn fontcia-btn-primary';
+    saveBtn.textContent = saved ? '★ Saved' : '☆ Save';
+    saveBtn.addEventListener('click', onToggleSave);
+    actions.appendChild(saveBtn);
+  } else {
+    const loginBtn = document.createElement('button');
+    loginBtn.type = 'button';
+    loginBtn.className = 'fontcia-btn fontcia-btn-primary';
+    loginBtn.textContent = 'Log in to save';
+    loginBtn.addEventListener('click', onLoginPrompt);
+    actions.appendChild(loginBtn);
+  }
 
   const newScanBtn = document.createElement('button');
   newScanBtn.type = 'button';
