@@ -78,16 +78,34 @@ export function renderLockedSelection(
   let disposed = false;
   let savedFontId: string | null = null;
   let currentResult: MatchResult | null = null;
+  // Guards the SAVE_FONT/DELETE_SAVED_FONT round trip against two distinct
+  // hazards: (1) a chrome.storage.onChanged fire — routinely triggered by the
+  // very request in flight, since a 401-refresh-and-retry inside api-client.ts
+  // writes to the same 'fontcia-auth' key this file listens on — re-rendering
+  // a fresh, non-disabled button mid-request; and (2) a second click landing
+  // while the first request is still outstanding. Both are closed by the same
+  // flag: renderResult() no-ops while it's set, and handleToggleSave() itself
+  // refuses to start a second round trip while one is pending.
+  let togglePending = false;
 
   function handleLoginPrompt(): void {
     window.open(chrome.runtime.getURL('login/login.html'), '_blank');
   }
 
   async function renderResult(): Promise<void> {
-    if (!currentResult) return;
-    const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+    if (!currentResult || togglePending) return;
+    let isLoggedIn = false;
+    try {
+      const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+      isLoggedIn = authRes.ok && authRes.data.loggedIn;
+    } catch (error: unknown) {
+      // GET_AUTH_STATE is a pure local read per Task 3 and shouldn't normally
+      // reject, but if the service worker is asleep or the extension context
+      // was invalidated, degrade to the logged-out UI rather than leaving
+      // whatever was on screen (e.g. a disabled Save button) stuck forever.
+      console.error('fontCIA: failed to check auth state', error);
+    }
     if (disposed || !currentResult) return;
-    const isLoggedIn = authRes.ok && authRes.data.loggedIn;
     renderResultState(
       body,
       currentResult,
@@ -106,7 +124,8 @@ export function renderLockedSelection(
   }
 
   function handleToggleSave(): void {
-    if (!currentResult) return;
+    if (!currentResult || togglePending) return;
+    togglePending = true;
     const wasSaved = savedFontId !== null;
     const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement | null;
     if (saveBtn) saveBtn.disabled = true;
@@ -115,6 +134,7 @@ export function renderLockedSelection(
       const idToDelete = savedFontId as string;
       sendApiMessage<null>({ type: 'DELETE_SAVED_FONT', id: idToDelete })
         .then((res) => {
+          togglePending = false;
           if (disposed) return;
           if (res.ok) {
             savedFontId = null;
@@ -124,6 +144,7 @@ export function renderLockedSelection(
           void renderResult();
         })
         .catch((error: unknown) => {
+          togglePending = false;
           if (disposed) return;
           console.error('fontCIA: unsave failed', error);
           if (saveBtn) saveBtn.disabled = false;
@@ -132,6 +153,7 @@ export function renderLockedSelection(
       const { fontName, confidence, sources } = currentResult;
       sendApiMessage<{ id: string }>({ type: 'SAVE_FONT', fontName, confidence, sources })
         .then((res) => {
+          togglePending = false;
           if (disposed) return;
           if (res.ok) {
             savedFontId = res.data.id;
@@ -141,6 +163,7 @@ export function renderLockedSelection(
           void renderResult();
         })
         .catch((error: unknown) => {
+          togglePending = false;
           if (disposed) return;
           console.error('fontCIA: save failed', error);
           if (saveBtn) saveBtn.disabled = false;

@@ -512,4 +512,94 @@ describe('renderLockedSelection', () => {
 
     expect(chromeMock.storage.onChanged.removeListener).toHaveBeenCalledOnce();
   });
+
+  it('ignores a storage.onChanged auth-state fire while a save is in flight, and rejects a second click', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({ status: 'match', fontName: 'Inter', confidence: 92, sources: [] }),
+    );
+    const deferred = createDeferred<{ ok: true; data: { id: string } }>();
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      if (message.type === 'SAVE_FONT') return deferred.promise;
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const saveBtn = panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    saveBtn.click(); // SAVE_FONT now in flight, deferred, not yet resolved
+
+    // Simulate the in-flight request's own token refresh writing to storage.
+    const changeListener = chromeMock.storage.onChanged.addListener.mock.calls[0][0];
+    changeListener({ 'fontcia-auth': { newValue: {} } }, 'local');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A second click while still pending must not fire a second SAVE_FONT.
+    // Deliberately re-query rather than reuse `saveBtn`: if the storage-listener
+    // fire were allowed to re-render mid-flight, that render would swap in a
+    // *fresh, non-disabled* button, and clicking the original (now-detached,
+    // disabled) `saveBtn` reference would silently no-op regardless of any
+    // pending-guard logic — proving nothing either way. Querying live is what
+    // actually exercises the race.
+    const liveBtnAfterStorageFire = panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    liveBtnAfterStorageFire.click();
+    await Promise.resolve();
+
+    const saveCalls = chromeMock.runtime.sendMessage.mock.calls.filter(
+      ([msg]) => (msg as { type: string }).type === 'SAVE_FONT',
+    );
+    expect(saveCalls).toHaveLength(1);
+
+    deferred.resolve({ ok: true, data: { id: 'font-1' } });
+    await deferred.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect((panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).textContent).toBe('★ Saved');
+  });
+
+  it('falls back to logged-out UI instead of hanging when GET_AUTH_STATE rejects', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({ status: 'match', fontName: 'Inter', confidence: 92, sources: [] }),
+    );
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') throw new Error('service worker unreachable');
+      return { ok: true, data: null };
+    });
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const btn = panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement;
+    expect(btn.textContent).toBe('Log in to save');
+    expect(btn.disabled).toBe(false);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
 });
