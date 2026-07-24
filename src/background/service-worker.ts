@@ -1,4 +1,6 @@
 import { isSelectionActive, markSelectionActive } from '../shared/session-state';
+import { signup, login, logout, getAuthState, saveFont, deleteSavedFont, logScan } from './api-client';
+import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 
 const CONTENT_SCRIPT_FILE = 'content/overlay.js';
 const UNAVAILABLE_BADGE_DURATION_MS = 1500;
@@ -71,3 +73,29 @@ export async function handleIconClick(tab: chrome.tabs.Tab): Promise<void> {
 }
 
 chrome.action.onClicked.addListener(handleIconClick);
+
+export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse<unknown>> {
+  switch (message.type) {
+    case 'SIGNUP':
+      return signup(message.email, message.password);
+    case 'LOGIN':
+      return login(message.email, message.password);
+    case 'LOGOUT':
+      return logout();
+    case 'GET_AUTH_STATE':
+      return getAuthState();
+    case 'SAVE_FONT':
+      return saveFont(message.fontName, message.confidence, message.sources);
+    case 'DELETE_SAVED_FONT':
+      return deleteSavedFont(message.id);
+    case 'LOG_SCAN':
+      return logScan(message.status, message.fontName, message.confidence);
+    default:
+      return { ok: false, error: 'Unknown message type' };
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: ApiMessage, _sender, sendResponse) => {
+  handleApiMessage(message).then(sendResponse);
+  return true;
+});

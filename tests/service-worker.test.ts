@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createChromeMock } from './helpers/chrome-mock';
 import { moduleLoadChromeMock } from './setup';
 import { handleIconClick, isInjectableUrl } from '../src/background/service-worker';
@@ -92,6 +92,165 @@ describe('isInjectableUrl', () => {
   it('rejects undefined and malformed URLs', () => {
     expect(isInjectableUrl(undefined)).toBe(false);
     expect(isInjectableUrl('not a url')).toBe(false);
+  });
+});
+
+describe('handleApiMessage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('dispatches SIGNUP to the api-client signup function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(async () => ({ ok: true, data: { user: { id: 'u1', email: 'a@example.com' } } })),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { signup } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'SIGNUP', email: 'a@example.com', password: 'password123' });
+
+    expect(signup).toHaveBeenCalledWith('a@example.com', 'password123');
+    expect(result).toEqual({ ok: true, data: { user: { id: 'u1', email: 'a@example.com' } } });
+  });
+
+  it('dispatches LOGIN to the api-client login function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(async () => ({ ok: true, data: { user: { id: 'u1', email: 'a@example.com' } } })),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { login } = await import('../src/background/api-client');
+
+    await handleApiMessage({ type: 'LOGIN', email: 'a@example.com', password: 'password123' });
+
+    expect(login).toHaveBeenCalledWith('a@example.com', 'password123');
+  });
+
+  it('dispatches LOGOUT to the api-client logout function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(async () => ({ ok: true, data: null })),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { logout } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'LOGOUT' });
+
+    expect(logout).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, data: null });
+  });
+
+  it('dispatches GET_AUTH_STATE to the api-client getAuthState function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(async () => ({ ok: true, data: { loggedIn: false } })),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { getAuthState } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'GET_AUTH_STATE' });
+
+    expect(getAuthState).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, data: { loggedIn: false } });
+  });
+
+  it('dispatches SAVE_FONT to the api-client saveFont function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(async () => ({ ok: true, data: { id: 'font-1' } })),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { saveFont } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({
+      type: 'SAVE_FONT',
+      fontName: 'Inter',
+      confidence: 92,
+      sources: [],
+    });
+
+    expect(saveFont).toHaveBeenCalledWith('Inter', 92, []);
+    expect(result).toEqual({ ok: true, data: { id: 'font-1' } });
+  });
+
+  it('dispatches DELETE_SAVED_FONT to the api-client deleteSavedFont function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(async () => ({ ok: true, data: null })),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { deleteSavedFont } = await import('../src/background/api-client');
+
+    await handleApiMessage({ type: 'DELETE_SAVED_FONT', id: 'font-1' });
+
+    expect(deleteSavedFont).toHaveBeenCalledWith('font-1');
+  });
+
+  it('dispatches LOG_SCAN to the api-client logScan function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(async () => ({ ok: true, data: null })),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { logScan } = await import('../src/background/api-client');
+
+    await handleApiMessage({ type: 'LOG_SCAN', status: 'match', fontName: 'Inter', confidence: 92 });
+
+    expect(logScan).toHaveBeenCalledWith('match', 'Inter', 92);
+  });
+
+  it('returns an error response for an unrecognized message type', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+
+    // @ts-expect-error deliberately malformed input to prove the runtime fallback
+    const result = await handleApiMessage({ type: 'NOT_A_REAL_MESSAGE' });
+
+    expect(result).toEqual({ ok: false, error: 'Unknown message type' });
   });
 });
 
