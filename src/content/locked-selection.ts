@@ -1,5 +1,6 @@
 import type { Rect } from '../shared/selection-box';
 import type { MatchResult, ScanResult } from './scan-types';
+import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 import { resolveFontFromSelection } from './font-resolver';
 import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from './scan-dialogue';
 
@@ -14,6 +15,16 @@ function applyRect(el: HTMLDivElement, rect: Rect): void {
   el.style.top = `${rect.y}px`;
   el.style.width = `${rect.width}px`;
   el.style.height = `${rect.height}px`;
+}
+
+// Deliberately not an `async function`: wrapping this in `async` would add an
+// extra microtask tick (the async-function-returns-a-promise adoption step)
+// on top of the tick already spent resolving the underlying
+// chrome.runtime.sendMessage() call. Returning the promise directly keeps the
+// call chain (scan -> GET_AUTH_STATE -> render) to the minimum number of
+// microtask hops.
+function sendApiMessage<T>(message: ApiMessage): Promise<ApiResponse<T>> {
+  return chrome.runtime.sendMessage(message) as Promise<ApiResponse<T>>;
 }
 
 export function renderLockedSelection(
@@ -65,24 +76,93 @@ export function renderLockedSelection(
   // State is scoped to this one closure — a fresh instance every time a
   // selection locks, never module-level, so there's no cross-instance leakage.
   let disposed = false;
-  let saved = false;
+  let savedFontId: string | null = null;
   let currentResult: MatchResult | null = null;
+
+  function handleLoginPrompt(): void {
+    window.open(chrome.runtime.getURL('login/login.html'), '_blank');
+  }
+
+  async function renderResult(): Promise<void> {
+    if (!currentResult) return;
+    const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+    if (disposed || !currentResult) return;
+    const isLoggedIn = authRes.ok && authRes.data.loggedIn;
+    renderResultState(
+      body,
+      currentResult,
+      savedFontId !== null,
+      handleToggleSave,
+      onRestart,
+      isLoggedIn,
+      handleLoginPrompt,
+    );
+  }
 
   function showResult(result: MatchResult): void {
     currentResult = result;
-    renderResultState(body, result, saved, handleToggleSave, onRestart);
+    savedFontId = null;
+    void renderResult();
   }
 
   function handleToggleSave(): void {
     if (!currentResult) return;
-    saved = !saved;
-    renderResultState(body, currentResult, saved, handleToggleSave, onRestart);
+    const wasSaved = savedFontId !== null;
+    const saveBtn = body.querySelector('.fontcia-btn-primary') as HTMLButtonElement | null;
+    if (saveBtn) saveBtn.disabled = true;
+
+    if (wasSaved) {
+      const idToDelete = savedFontId as string;
+      sendApiMessage<null>({ type: 'DELETE_SAVED_FONT', id: idToDelete })
+        .then((res) => {
+          if (disposed) return;
+          if (res.ok) {
+            savedFontId = null;
+          } else {
+            console.error('fontCIA: unsave failed', res.error);
+          }
+          void renderResult();
+        })
+        .catch((error: unknown) => {
+          if (disposed) return;
+          console.error('fontCIA: unsave failed', error);
+          if (saveBtn) saveBtn.disabled = false;
+        });
+    } else {
+      const { fontName, confidence, sources } = currentResult;
+      sendApiMessage<{ id: string }>({ type: 'SAVE_FONT', fontName, confidence, sources })
+        .then((res) => {
+          if (disposed) return;
+          if (res.ok) {
+            savedFontId = res.data.id;
+          } else {
+            console.error('fontCIA: save failed', res.error);
+          }
+          void renderResult();
+        })
+        .catch((error: unknown) => {
+          if (disposed) return;
+          console.error('fontCIA: save failed', error);
+          if (saveBtn) saveBtn.disabled = false;
+        });
+    }
+  }
+
+  function logScanResult(result: ScanResult): void {
+    const message: ApiMessage =
+      result.status === 'match'
+        ? { type: 'LOG_SCAN', status: 'match', fontName: result.fontName, confidence: result.confidence }
+        : { type: 'LOG_SCAN', status: 'no-match' };
+    sendApiMessage<null>(message).catch((error: unknown) => {
+      console.error('fontCIA: scan logging failed', error);
+    });
   }
 
   function handleScan(): void {
     renderLoadingState(body);
     scanFn(rect)
       .then((result) => {
+        logScanResult(result);
         // An in-flight scan must not touch the DOM after the panel is dismissed
         // (Esc, the close button, or an icon-click toggle-off) — all three
         // converge on overlay.ts's teardownOverlay(), which calls dispose()
@@ -95,6 +175,7 @@ export function renderLockedSelection(
         }
       })
       .catch((error: unknown) => {
+        logScanResult({ status: 'no-match', reason: 'error' });
         if (disposed) return;
         console.error('fontCIA: font resolution failed', error);
         renderNoMatchState(body, onRestart);
@@ -103,8 +184,16 @@ export function renderLockedSelection(
 
   renderReadyState(body, handleScan);
 
+  function handleAuthChange(changes: Record<string, unknown>, areaName: string): void {
+    if (areaName !== 'local' || !('fontcia-auth' in changes)) return;
+    void renderResult();
+  }
+
+  chrome.storage.onChanged.addListener(handleAuthChange);
+
   function dispose(): void {
     disposed = true;
+    chrome.storage.onChanged.removeListener(handleAuthChange);
   }
 
   return { box, panel, dispose };

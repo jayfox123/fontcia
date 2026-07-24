@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
+import { createChromeMock } from './helpers/chrome-mock';
 import type { ScanResult } from '../src/content/scan-types';
 
 vi.mock('../src/content/font-resolver', async (importOriginal) => {
@@ -22,6 +23,23 @@ import { isSelectionActive, clearSelectionActive } from '../src/shared/session-s
 function dispatchMouse(target: Element, type: string, x: number, y: number): void {
   target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
 }
+
+beforeEach(() => {
+  // locked-selection.ts now reaches out to the background for GET_AUTH_STATE
+  // (before rendering a result) and fires LOG_SCAN after every scan outcome.
+  // Without a working sendMessage mock those calls resolve to `undefined`,
+  // and `.catch()`/property access on that blows up as an unhandled
+  // rejection — unrelated to what this file actually exercises (Escape
+  // dismissal and the New scan restart path).
+  const chromeMock = createChromeMock();
+  (globalThis as unknown as { chrome: unknown }).chrome = chromeMock;
+  chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+    if (message.type === 'GET_AUTH_STATE') {
+      return { ok: true, data: { loggedIn: true } };
+    }
+    return { ok: true, data: null };
+  });
+});
 
 afterEach(() => {
   dismissSelection();
