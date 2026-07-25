@@ -115,6 +115,7 @@ export async function handleCaptureMessage(
 ): Promise<CaptureResponse> {
   const windowId = sender.tab?.windowId;
   if (windowId === undefined) {
+    console.warn('fontCIA: capture message has no windowId', sender);
     return { status: 'error', message: 'Unable to determine window for capture' };
   }
   return captureAndCropSelection(windowId, message.rect, message.devicePixelRatio);
