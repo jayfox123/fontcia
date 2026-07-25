@@ -19,9 +19,9 @@ def health() -> dict[str, str]:
 
 
 @app.post("/embed")
-async def embed(image: UploadFile = File(...)) -> dict[str, list[float]]:
+def embed(image: UploadFile = File(...)) -> dict[str, list[float]]:
     try:
-        contents = await image.read()
+        contents = image.file.read()
         pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
@@ -30,10 +30,10 @@ async def embed(image: UploadFile = File(...)) -> dict[str, list[float]]:
     with torch.no_grad():
         outputs = _model(**inputs)
 
-    # Mean-pool the last hidden state across patch tokens to get one
-    # fixed-length vector per image (the [CLS] token, index 0, is an
-    # equally common choice — mean-pooling is used here for a slightly
-    # more robust whole-image representation across DINOv2's patch grid).
+    # Mean-pool the last hidden state across all tokens (CLS + patches) to
+    # get one fixed-length vector per image — pooling the CLS token alone
+    # (index 0) is an equally common choice; this averages the whole grid
+    # for a slightly more robust whole-image representation.
     embedding = outputs.last_hidden_state.mean(dim=1).squeeze().tolist()
 
     return {"embedding": embedding}
