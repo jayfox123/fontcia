@@ -27,22 +27,11 @@ fontMatchesRouter.post('/', optionalAuth, upload.single('image'), async (req, re
     const embedding = await getEmbedding(req.file.buffer);
     const vectorLiteral = toVectorLiteral(embedding);
 
-    // Note: the distance computation is wrapped in a MATERIALIZED CTE so Postgres
-    // computes it via a plain sequential scan rather than pushing the ORDER BY/LIMIT
-    // down into the FontEmbedding_embedding_idx ivfflat index. That index is only as
-    // good as the training data present when it was built/last reindexed; on a small
-    // or freshly-loaded font catalog its approximate search can silently under-recall
-    // (miss true nearest neighbors, including exact matches). An exact scan is cheap
-    // at this table's scale and guarantees correct, deterministic ranking.
     const rows = await prisma.$queryRaw<MatchRow[]>`
-      WITH candidates AS MATERIALIZED (
-        SELECT "Font".name AS "fontName", "Font"."googleSlug" AS "googleSlug",
-               "FontEmbedding".embedding <=> ${vectorLiteral}::vector AS distance
-        FROM "FontEmbedding"
-        JOIN "Font" ON "Font".id = "FontEmbedding"."fontId"
-      )
-      SELECT "fontName", "googleSlug", distance
-      FROM candidates
+      SELECT "Font".name AS "fontName", "Font"."googleSlug" AS "googleSlug",
+             "FontEmbedding".embedding <=> ${vectorLiteral}::vector AS distance
+      FROM "FontEmbedding"
+      JOIN "Font" ON "Font".id = "FontEmbedding"."fontId"
       ORDER BY distance ASC
       LIMIT ${TOP_K}
     `;
