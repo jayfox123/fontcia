@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createChromeMock } from './helpers/chrome-mock';
 import { renderLockedSelection } from '../src/content/locked-selection';
 import type { ScanResult } from '../src/content/scan-types';
+import type { CaptureResponse } from '../src/shared/capture-messages';
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -601,5 +602,209 @@ describe('renderLockedSelection', () => {
     expect(consoleErrorSpy).toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('shows "Analyzing image…" and sends CAPTURE_SELECTION when the scan result is no-text', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const captureDeferred = createDeferred<CaptureResponse>();
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return captureDeferred.promise;
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-analyzing-message')?.textContent).toBe('Analyzing image…');
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CAPTURE_SELECTION',
+      rect: { x: 10, y: 20, width: 200, height: 30 },
+      devicePixelRatio: window.devicePixelRatio,
+    });
+  });
+
+  it('scales the CAPTURE_SELECTION message by the real window.devicePixelRatio', async () => {
+    const originalDpr = window.devicePixelRatio;
+    Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const captureDeferred = createDeferred<CaptureResponse>();
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return captureDeferred.promise;
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CAPTURE_SELECTION',
+      rect: { x: 10, y: 20, width: 200, height: 30 },
+      devicePixelRatio: 2,
+    });
+
+    Object.defineProperty(window, 'devicePixelRatio', { value: originalDpr, configurable: true });
+  });
+
+  it('holds the captured Blob and logs it, staying on the analyzing state, on a successful capture', async () => {
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const fakeBlob = new Blob(['fake image data'], { type: 'image/png' });
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'captured', blob: fakeBlob };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-analyzing-message')?.textContent).toBe('Analyzing image…');
+    expect(consoleLogSpy).toHaveBeenCalledWith('fontCIA: captured image for analysis', fakeBlob);
+
+    consoleLogSpy.mockRestore();
+  });
+
+  it('renders the capture-blocked state when the response is blocked', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'blocked' };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("Can't capture this content.");
+  });
+
+  it('renders the capture-blocked state and logs an error when the response is an error', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'error', message: 'capture failed' };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("Can't capture this content.");
+    expect(consoleErrorSpy).toHaveBeenCalledWith('fontCIA: image capture failed', 'capture failed');
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('renders the capture-blocked state when the CAPTURE_SELECTION message itself rejects', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') throw new Error('service worker unreachable');
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("Can't capture this content.");
+    expect(consoleErrorSpy).toHaveBeenCalledWith('fontCIA: image capture message failed', expect.any(Error));
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does not render anything after dispose() while the capture response is still pending', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const captureDeferred = createDeferred<CaptureResponse>();
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return captureDeferred.promise;
+      return { ok: true, data: null };
+    });
+
+    const { panel, dispose } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-analyzing-message')).not.toBeNull();
+
+    dispose();
+    captureDeferred.resolve({ status: 'blocked' });
+    await captureDeferred.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')).toBeNull();
+    expect(panel.querySelector('.fontcia-analyzing-message')).not.toBeNull();
   });
 });

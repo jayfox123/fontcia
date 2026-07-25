@@ -1,8 +1,16 @@
 import type { Rect } from '../shared/selection-box';
 import type { MatchResult, ScanResult } from './scan-types';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
+import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
 import { resolveFontFromSelection } from './font-resolver';
-import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from './scan-dialogue';
+import {
+  renderReadyState,
+  renderLoadingState,
+  renderResultState,
+  renderNoMatchState,
+  renderAnalyzingImageState,
+  renderCaptureBlockedState,
+} from './scan-dialogue';
 
 export interface LockedSelectionElements {
   box: HTMLDivElement;
@@ -87,6 +95,7 @@ export function renderLockedSelection(
   // flag: renderResult() no-ops while it's set, and handleToggleSave() itself
   // refuses to start a second round trip while one is pending.
   let togglePending = false;
+  let capturedImageBlob: Blob | null = null;
 
   function handleLoginPrompt(): void {
     window.open(chrome.runtime.getURL('login/login.html'), '_blank');
@@ -171,6 +180,36 @@ export function renderLockedSelection(
     }
   }
 
+  function handleNoTextResult(): void {
+    renderAnalyzingImageState(body);
+    const message: CaptureSelectionMessage = {
+      type: 'CAPTURE_SELECTION',
+      rect,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+    chrome.runtime
+      .sendMessage(message)
+      .then((response: CaptureResponse) => {
+        if (disposed) return;
+        if (response.status === 'captured') {
+          capturedImageBlob = response.blob;
+          console.log('fontCIA: captured image for analysis', capturedImageBlob);
+          // Stays on "Analyzing image…" — no matcher exists yet; a future
+          // sub-project replaces this branch with a real result render.
+        } else if (response.status === 'blocked') {
+          renderCaptureBlockedState(body, onRestart);
+        } else {
+          console.error('fontCIA: image capture failed', response.message);
+          renderCaptureBlockedState(body, onRestart);
+        }
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        console.error('fontCIA: image capture message failed', error);
+        renderCaptureBlockedState(body, onRestart);
+      });
+  }
+
   function logScanResult(result: ScanResult): void {
     const message: ApiMessage =
       result.status === 'match'
@@ -193,6 +232,8 @@ export function renderLockedSelection(
         if (disposed) return;
         if (result.status === 'match') {
           showResult(result);
+        } else if (result.status === 'no-match' && result.reason === 'no-text') {
+          handleNoTextResult();
         } else {
           renderNoMatchState(body, onRestart);
         }
