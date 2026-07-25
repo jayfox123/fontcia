@@ -113,3 +113,37 @@ export function renderNoMatchState(body: HTMLElement, onNewScan: () => void): vo
 
   body.appendChild(actions);
 }
+
+export function renderAnalyzingImageState(body: HTMLElement): void {
+  body.replaceChildren();
+
+  const spinner = document.createElement('div');
+  spinner.className = 'fontcia-spinner';
+  body.appendChild(spinner);
+
+  const message = document.createElement('div');
+  message.className = 'fontcia-analyzing-message';
+  message.textContent = 'Analyzing image…';
+  body.appendChild(message);
+}
+
+export function renderCaptureBlockedState(body: HTMLElement, onNewScan: () => void): void {
+  body.replaceChildren();
+
+  const message = document.createElement('div');
+  message.className = 'fontcia-no-match-message';
+  message.textContent = "Can't capture this content.";
+  body.appendChild(message);
+
+  const actions = document.createElement('div');
+  actions.className = 'fontcia-result-actions';
+
+  const newScanBtn = document.createElement('button');
+  newScanBtn.type = 'button';
+  newScanBtn.className = 'fontcia-btn fontcia-btn-secondary';
+  newScanBtn.textContent = 'New scan';
+  newScanBtn.addEventListener('click', onNewScan);
+  actions.appendChild(newScanBtn);
+
+  body.appendChild(actions);
+}

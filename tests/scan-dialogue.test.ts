@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { renderReadyState, renderLoadingState, renderResultState, renderNoMatchState } from '../src/content/scan-dialogue';
+import {
+  renderReadyState,
+  renderLoadingState,
+  renderResultState,
+  renderNoMatchState,
+  renderAnalyzingImageState,
+  renderCaptureBlockedState,
+} from '../src/content/scan-dialogue';
 import type { MatchResult } from '../src/content/scan-types';
 
 describe('renderReadyState', () => {
@@ -142,6 +149,53 @@ describe('renderNoMatchState', () => {
     const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
 
     newScanBtn.click();
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderAnalyzingImageState', () => {
+  it('renders a spinner and an analyzing message with no interactive elements', () => {
+    const body = document.createElement('div');
+
+    renderAnalyzingImageState(body);
+
+    expect(body.querySelector('.fontcia-spinner')).not.toBeNull();
+    expect(body.querySelector('.fontcia-analyzing-message')?.textContent).toBe('Analyzing image…');
+    expect(body.querySelector('button')).toBeNull();
+  });
+
+  it('clears any previous content before rendering', () => {
+    const body = document.createElement('div');
+    body.textContent = 'stale content';
+
+    renderAnalyzingImageState(body);
+
+    expect(body.textContent).not.toContain('stale content');
+  });
+});
+
+describe('renderCaptureBlockedState', () => {
+  it('renders a message and a New scan button, with no Name-it button', () => {
+    const body = document.createElement('div');
+
+    renderCaptureBlockedState(body, vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe("Can't capture this content.");
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    expect(buttons.some((b) => b.textContent === 'Name it')).toBe(false);
+    expect(buttons.some((b) => b.textContent === 'New scan')).toBe(true);
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderCaptureBlockedState(body, onNewScan);
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+    newScanBtn.click();
+
     expect(onNewScan).toHaveBeenCalledOnce();
   });
 });
