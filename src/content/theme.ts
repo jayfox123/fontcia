@@ -158,4 +158,10 @@ export const themeCss = `
   color: var(--fontcia-text);
   margin-bottom: 10px;
 }
+
+.fontcia-analyzing-message {
+  font-size: 12px;
+  color: var(--fontcia-text);
+  margin-top: 10px;
+}
 `;
