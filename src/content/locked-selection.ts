@@ -95,6 +95,10 @@ export function renderLockedSelection(
   // flag: renderResult() no-ops while it's set, and handleToggleSave() itself
   // refuses to start a second round trip while one is pending.
   let togglePending = false;
+  // Held for a future sub-project's image-matching call — not read anywhere
+  // in this sub-project, which is capture-and-crop plumbing only. Deliberately
+  // still assigned (not just logged) so it survives past this closure's
+  // console.log call, ready for that later consumer.
   let capturedImageBlob: Blob | null = null;
 
   function handleLoginPrompt(): void {
