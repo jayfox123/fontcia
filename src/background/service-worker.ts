@@ -1,6 +1,8 @@
 import { isSelectionActive, markSelectionActive } from '../shared/session-state';
 import { signup, login, logout, getAuthState, saveFont, deleteSavedFont, logScan } from './api-client';
+import { captureAndCropSelection } from './image-capture';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
+import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
 
 const CONTENT_SCRIPT_FILE = 'content/overlay.js';
 const UNAVAILABLE_BADGE_DURATION_MS = 1500;
@@ -107,7 +109,24 @@ export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse
   }
 }
 
-chrome.runtime.onMessage.addListener((message: ApiMessage, _sender, sendResponse) => {
-  handleApiMessage(message).then(sendResponse);
-  return true;
-});
+export async function handleCaptureMessage(
+  message: CaptureSelectionMessage,
+  sender: chrome.runtime.MessageSender,
+): Promise<CaptureResponse> {
+  const windowId = sender.tab?.windowId;
+  if (windowId === undefined) {
+    return { status: 'error', message: 'Unable to determine window for capture' };
+  }
+  return captureAndCropSelection(windowId, message.rect, message.devicePixelRatio);
+}
+
+chrome.runtime.onMessage.addListener(
+  (message: ApiMessage | CaptureSelectionMessage, sender: chrome.runtime.MessageSender, sendResponse) => {
+    if (message.type === 'CAPTURE_SELECTION') {
+      handleCaptureMessage(message, sender).then(sendResponse);
+    } else {
+      handleApiMessage(message).then(sendResponse);
+    }
+    return true;
+  },
+);

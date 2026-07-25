@@ -287,6 +287,44 @@ describe('handleApiMessage', () => {
   });
 });
 
+describe('handleCaptureMessage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('resolves windowId from the sender and delegates to captureAndCropSelection', async () => {
+    vi.doMock('../src/background/image-capture', () => ({
+      captureAndCropSelection: vi.fn(async () => ({ status: 'captured', blob: new Blob() })),
+    }));
+    const { handleCaptureMessage } = await import('../src/background/service-worker');
+    const { captureAndCropSelection } = await import('../src/background/image-capture');
+
+    const rect = { x: 1, y: 2, width: 3, height: 4 };
+    const sender = { tab: { windowId: 42 } } as chrome.runtime.MessageSender;
+
+    const result = await handleCaptureMessage({ type: 'CAPTURE_SELECTION', rect, devicePixelRatio: 2 }, sender);
+
+    expect(captureAndCropSelection).toHaveBeenCalledWith(42, rect, 2);
+    expect(result).toEqual({ status: 'captured', blob: expect.any(Blob) });
+  });
+
+  it('returns an error response without calling captureAndCropSelection when the sender has no windowId', async () => {
+    vi.doMock('../src/background/image-capture', () => ({
+      captureAndCropSelection: vi.fn(),
+    }));
+    const { handleCaptureMessage } = await import('../src/background/service-worker');
+    const { captureAndCropSelection } = await import('../src/background/image-capture');
+
+    const result = await handleCaptureMessage(
+      { type: 'CAPTURE_SELECTION', rect: { x: 0, y: 0, width: 1, height: 1 }, devicePixelRatio: 1 },
+      {} as chrome.runtime.MessageSender,
+    );
+
+    expect(captureAndCropSelection).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'error', message: 'Unable to determine window for capture' });
+  });
+});
+
 describe('module load side effects', () => {
   it('grants content scripts access to chrome.storage.session on module load', () => {
     // The top-level `import '../src/background/service-worker'` above runs once,
