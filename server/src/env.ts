@@ -8,4 +8,5 @@ function requireEnv(name: string): string {
 
 export const env = {
   JWT_SECRET: requireEnv('JWT_SECRET'),
+  EMBEDDING_SERVICE_URL: requireEnv('EMBEDDING_SERVICE_URL'),
 };

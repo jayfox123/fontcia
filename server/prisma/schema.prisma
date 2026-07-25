@@ -47,3 +47,22 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
+
+model Font {
+  id         String          @id @default(uuid())
+  name       String          @unique
+  googleSlug String
+  category   String?
+  embeddings FontEmbedding[]
+}
+
+model FontEmbedding {
+  id            String   @id @default(uuid())
+  fontId        String
+  font          Font     @relation(fields: [fontId], references: [id])
+  renderVariant String
+  embedding     Unsupported("vector(384)")
+  createdAt     DateTime @default(now())
+
+  @@unique([fontId, renderVariant])
+}
