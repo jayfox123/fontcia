@@ -62,15 +62,42 @@ describe('POST /font-matches', () => {
   });
 
   it('returns at most 5 matches even when more reference fonts exist', async () => {
-    for (let i = 0; i < 7; i++) {
-      await seedFontEmbedding(`Font ${i}`, Array.from({ length: 384 }, () => i));
+    // Constant-value vectors are all mutually parallel (cosine distance 0
+    // or 2 between any two), which collapses the margin between candidates
+    // to 0 and would trip the "no clear winner" rejection below. Flipping a
+    // growing prefix of dimensions gives each font a genuinely different
+    // direction, with large, well-separated distances from the query.
+    function embeddingWithFlippedPrefix(flipCount: number): number[] {
+      return Array.from({ length: 384 }, (_, idx) => (idx < flipCount ? -1 : 1));
     }
-    vi.mocked(getEmbedding).mockResolvedValueOnce(Array.from({ length: 384 }, () => 0));
+
+    for (let i = 0; i < 7; i++) {
+      await seedFontEmbedding(`Font ${i}`, embeddingWithFlippedPrefix((i + 1) * 20));
+    }
+    vi.mocked(getEmbedding).mockResolvedValueOnce(embeddingWithFlippedPrefix(0));
 
     const res = await request(app).post('/font-matches').attach('image', Buffer.from('fake-image'), 'crop.png');
 
     expect(res.status).toBe(201);
     expect(res.body.matches).toHaveLength(5);
+  });
+
+  it('returns no matches when the top two candidates are too close to call', async () => {
+    const queryEmbedding = Array.from({ length: 384 }, () => 1);
+    // Two fonts an equal, tiny distance from the query and from each other
+    // — nothing stands out as a clear winner.
+    const almostIdenticalA = Array.from({ length: 384 }, (_, idx) => (idx === 0 ? 0.999 : 1));
+    const almostIdenticalB = Array.from({ length: 384 }, (_, idx) => (idx === 1 ? 0.999 : 1));
+
+    await seedFontEmbedding('Ambiguous Font A', almostIdenticalA);
+    await seedFontEmbedding('Ambiguous Font B', almostIdenticalB);
+
+    vi.mocked(getEmbedding).mockResolvedValueOnce(queryEmbedding);
+
+    const res = await request(app).post('/font-matches').attach('image', Buffer.from('fake-image'), 'crop.png');
+
+    expect(res.status).toBe(201);
+    expect(res.body.matches).toEqual([]);
   });
 
   it('returns a 500 without crashing when the embedding service call fails', async () => {
