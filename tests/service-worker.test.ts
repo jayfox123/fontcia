@@ -368,6 +368,26 @@ describe('handleMatchImageMessage', () => {
 
     expect(result).toEqual({ status: 'error', message: 'embedding service unreachable' });
   });
+
+  it('returns a network-error response instead of rejecting when matchImage itself throws', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(async () => {
+        throw new Error('fetch failed');
+      }),
+    }));
+    const { handleMatchImageMessage } = await import('../src/background/service-worker');
+
+    const result = await handleMatchImageMessage({ type: 'MATCH_IMAGE', blob: new Blob() });
+
+    expect(result).toEqual({ status: 'error', message: 'Network error — please try again' });
+  });
 });
 
 describe('module load side effects', () => {

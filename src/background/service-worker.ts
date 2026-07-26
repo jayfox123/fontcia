@@ -123,11 +123,22 @@ export async function handleCaptureMessage(
 }
 
 export async function handleMatchImageMessage(message: MatchImageMessage): Promise<MatchImageResponse> {
-  const result = await matchImage(message.blob);
-  if (result.ok) {
-    return { status: 'ok', matches: result.data };
+  try {
+    const result = await matchImage(message.blob);
+    if (result.ok) {
+      return { status: 'ok', matches: result.data };
+    }
+    return { status: 'error', message: result.error };
+  } catch (error) {
+    // matchImage's fetch() call isn't wrapped internally — a network failure
+    // (offline, server down, DNS error) throws rather than resolving to
+    // {ok: false}. Same hazard handleApiMessage's catch block documents: an
+    // uncaught rejection here means sendResponse never gets called, and the
+    // content script hangs until Chrome reports a port-closed error instead
+    // of a clean error response.
+    console.error('fontCIA: handleMatchImageMessage failed', error);
+    return { status: 'error', message: 'Network error — please try again' };
   }
-  return { status: 'error', message: result.error };
 }
 
 chrome.runtime.onMessage.addListener(
