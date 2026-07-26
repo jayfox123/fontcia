@@ -25,7 +25,7 @@ async function matchFont(imageBuffer: Buffer): Promise<string[]> {
 
 async function main(): Promise<void> {
   const fonts: FontEntry[] = JSON.parse(readFileSync(resolve(__dirname, 'fonts.json'), 'utf-8'));
-  const browser = await puppeteer.launch();
+  let browser = await puppeteer.launch();
 
   let top1 = 0;
   let top3 = 0;
@@ -34,6 +34,13 @@ async function main(): Promise<void> {
 
   for (const [index, font] of fonts.entries()) {
     try {
+      // See build-reference-set.ts: Chromium can crash outright after
+      // enough sequential page renders in one long-lived instance.
+      if (!browser.connected) {
+        console.log('  Browser disconnected, relaunching...');
+        browser = await puppeteer.launch();
+      }
+
       const dataUrl = await fetchGoogleFontDataUrl(font.name);
       const image = await renderFontSample(browser, dataUrl, EVAL_PHRASE);
       const results = await matchFont(image);
@@ -52,7 +59,9 @@ async function main(): Promise<void> {
     }
   }
 
-  await browser.close();
+  if (browser.connected) {
+    await browser.close();
+  }
 
   const total = fonts.length;
   console.log('\n--- Evaluation results ---');

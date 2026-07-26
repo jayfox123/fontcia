@@ -13,17 +13,36 @@ declare const document: { fonts: { ready: Promise<unknown> } };
 // Real-browser-only glue (Puppeteer) — not unit-tested, same treatment
 // google-fonts.ts's fetchGoogleFontDataUrl got above. Verified by actually
 // running build-reference-set.ts and evaluate-matching.ts.
+// DINOv2's default image processor resizes the shortest edge to 256px, then
+// center-crops a 224x224 square — destructive on a wide, short strip of
+// text (most of the width gets cropped away). Rendering into a square
+// container the text wraps and centers within, instead of a single wide
+// line, keeps the whole sample inside that square crop.
+const RENDER_SIZE = 320;
+
 export async function renderFontSample(browser: Browser, fontDataUrl: string, text: string): Promise<Buffer> {
   const page = await browser.newPage();
   try {
-    await page.setViewport({ width: 500, height: 120 });
+    await page.setViewport({ width: RENDER_SIZE, height: RENDER_SIZE });
     await page.setContent(`
       <html>
         <head>
           <style>
             @font-face { font-family: 'SampleFont'; src: url('${fontDataUrl}'); }
-            body { margin: 0; padding: 10px; background: white; }
-            #sample { font-family: 'SampleFont'; font-size: 32px; color: black; }
+            body { margin: 0; background: white; }
+            #sample {
+              width: ${RENDER_SIZE}px;
+              height: ${RENDER_SIZE}px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              text-align: center;
+              font-family: 'SampleFont';
+              font-size: 24px;
+              color: black;
+              box-sizing: border-box;
+              padding: 16px;
+            }
           </style>
         </head>
         <body><div id="sample">${text}</div></body>

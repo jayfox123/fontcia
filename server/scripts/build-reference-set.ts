@@ -16,7 +16,7 @@ const BUILD_PHRASE = 'The quick brown fox jumps over the lazy dog';
 
 async function main(): Promise<void> {
   const fonts: FontEntry[] = JSON.parse(readFileSync(resolve(__dirname, 'fonts.json'), 'utf-8'));
-  const browser = await puppeteer.launch();
+  let browser = await puppeteer.launch();
 
   let succeeded = 0;
   let failed = 0;
@@ -24,6 +24,15 @@ async function main(): Promise<void> {
   for (const [index, font] of fonts.entries()) {
     console.log(`[${index + 1}/${fonts.length}] ${font.name}`);
     try {
+      // Chromium can crash outright after enough sequential page renders in
+      // one long-lived instance (observed after ~75 fonts on this pipeline).
+      // Relaunching on disconnect keeps one bad font's browser crash from
+      // taking out the rest of the run.
+      if (!browser.connected) {
+        console.log('  Browser disconnected, relaunching...');
+        browser = await puppeteer.launch();
+      }
+
       const dataUrl = await fetchGoogleFontDataUrl(font.name);
       const image = await renderFontSample(browser, dataUrl, BUILD_PHRASE);
       const embedding = await getEmbedding(image);
@@ -47,7 +56,9 @@ async function main(): Promise<void> {
     }
   }
 
-  await browser.close();
+  if (browser.connected) {
+    await browser.close();
+  }
   console.log(`\nDone. ${succeeded} succeeded, ${failed} failed out of ${fonts.length}.`);
 }
 
