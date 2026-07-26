@@ -164,4 +164,35 @@ export const themeCss = `
   color: var(--fontcia-text);
   margin-top: 10px;
 }
+
+.fontcia-match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fontcia-match-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fontcia-border);
+}
+
+.fontcia-match-item:last-child {
+  border-bottom: none;
+}
+
+.fontcia-match-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fontcia-text);
+}
+
+.fontcia-match-confidence {
+  font-size: 12px;
+  color: var(--fontcia-text);
+}
 `;

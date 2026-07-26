@@ -6,8 +6,12 @@ import {
   renderNoMatchState,
   renderAnalyzingImageState,
   renderCaptureBlockedState,
+  renderRankedMatchesState,
+  renderNoConfidentMatchState,
+  renderMatchErrorState,
 } from '../src/content/scan-dialogue';
 import type { MatchResult } from '../src/content/scan-types';
+import type { RankedMatch } from '../src/shared/match-messages';
 
 describe('renderReadyState', () => {
   it('renders a Scan button that calls onScan when clicked', () => {
@@ -191,6 +195,163 @@ describe('renderCaptureBlockedState', () => {
     const onNewScan = vi.fn();
 
     renderCaptureBlockedState(body, onNewScan);
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+    newScanBtn.click();
+
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderRankedMatchesState', () => {
+  const candidates: RankedMatch[] = [
+    {
+      fontName: 'Inter',
+      confidence: 82,
+      sources: [{ url: 'https://fonts.google.com/specimen/Inter', label: 'Google Fonts', votes: 1 }],
+    },
+    {
+      fontName: 'Roboto',
+      confidence: 61,
+      sources: [{ url: 'https://fonts.google.com/specimen/Roboto', label: 'Google Fonts', votes: 1 }],
+    },
+  ];
+
+  it('renders one item per candidate with its name, confidence, and sources', () => {
+    const body = document.createElement('div');
+
+    renderRankedMatchesState(body, candidates, [false, false], vi.fn(), vi.fn(), true, vi.fn());
+
+    const items = body.querySelectorAll('.fontcia-match-item');
+    expect(items).toHaveLength(2);
+
+    const names = Array.from(body.querySelectorAll('.fontcia-match-name')).map((el) => el.textContent);
+    expect(names).toEqual(['Inter', 'Roboto']);
+
+    const confidences = Array.from(body.querySelectorAll('.fontcia-match-confidence')).map((el) => el.textContent);
+    expect(confidences).toEqual(['82% confidence', '61% confidence']);
+
+    const links = body.querySelectorAll('.fontcia-source-link');
+    expect(links).toHaveLength(2);
+  });
+
+  it('shows independent saved state per candidate when logged in', () => {
+    const body = document.createElement('div');
+
+    renderRankedMatchesState(body, candidates, [false, true], vi.fn(), vi.fn(), true, vi.fn());
+
+    const saveButtons = Array.from(body.querySelectorAll('.fontcia-btn-primary')) as HTMLButtonElement[];
+    expect(saveButtons).toHaveLength(2);
+    expect(saveButtons[0].textContent).toBe('☆ Save');
+    expect(saveButtons[1].textContent).toBe('★ Saved');
+  });
+
+  it("calls onToggleSave with the clicked candidate's own index", () => {
+    const body = document.createElement('div');
+    const onToggleSave = vi.fn();
+
+    renderRankedMatchesState(body, candidates, [false, false], onToggleSave, vi.fn(), true, vi.fn());
+
+    const saveButtons = Array.from(body.querySelectorAll('.fontcia-btn-primary')) as HTMLButtonElement[];
+    saveButtons[1].click();
+
+    expect(onToggleSave).toHaveBeenCalledWith(1);
+    expect(onToggleSave).toHaveBeenCalledOnce();
+  });
+
+  it('shows "Log in to save" for every candidate instead of Save/Saved when not logged in', () => {
+    const body = document.createElement('div');
+
+    renderRankedMatchesState(body, candidates, [false, false], vi.fn(), vi.fn(), false, vi.fn());
+
+    const loginButtons = Array.from(body.querySelectorAll('.fontcia-btn-primary')) as HTMLButtonElement[];
+    expect(loginButtons).toHaveLength(2);
+    expect(loginButtons.every((btn) => btn.textContent === 'Log in to save')).toBe(true);
+  });
+
+  it('calls onLoginPrompt when a "Log in to save" button is clicked', () => {
+    const body = document.createElement('div');
+    const onLoginPrompt = vi.fn();
+
+    renderRankedMatchesState(body, candidates, [false, false], vi.fn(), vi.fn(), false, onLoginPrompt);
+
+    const loginButtons = Array.from(body.querySelectorAll('.fontcia-btn-primary')) as HTMLButtonElement[];
+    loginButtons[0].click();
+
+    expect(onLoginPrompt).toHaveBeenCalledOnce();
+  });
+
+  it('renders exactly one shared New scan button, not one per candidate', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderRankedMatchesState(body, candidates, [false, false], vi.fn(), onNewScan, true, vi.fn());
+
+    const newScanButtons = Array.from(body.querySelectorAll('.fontcia-btn-secondary')).filter(
+      (btn) => btn.textContent === 'New scan',
+    );
+    expect(newScanButtons).toHaveLength(1);
+
+    (newScanButtons[0] as HTMLButtonElement).click();
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+
+  it('clears any previous content before rendering', () => {
+    const body = document.createElement('div');
+    body.textContent = 'stale content';
+
+    renderRankedMatchesState(body, candidates, [false, false], vi.fn(), vi.fn(), true, vi.fn());
+
+    expect(body.textContent).not.toContain('stale content');
+  });
+});
+
+describe('renderNoConfidentMatchState', () => {
+  it('renders distinct copy from renderNoMatchState, with a New scan button', () => {
+    const body = document.createElement('div');
+
+    renderNoConfidentMatchState(body, vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe(
+      "Couldn't find a confident match for this font.",
+    );
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    expect(buttons.some((b) => b.textContent === 'New scan')).toBe(true);
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderNoConfidentMatchState(body, onNewScan);
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+    newScanBtn.click();
+
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderMatchErrorState', () => {
+  it('renders distinct copy from the other message states, with a New scan button', () => {
+    const body = document.createElement('div');
+
+    renderMatchErrorState(body, vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe(
+      'Something went wrong analyzing this image.',
+    );
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    expect(buttons.some((b) => b.textContent === 'New scan')).toBe(true);
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderMatchErrorState(body, onNewScan);
 
     const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
     const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
