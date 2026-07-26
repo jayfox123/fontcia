@@ -80,4 +80,13 @@ describe('POST /font-matches', () => {
 
     expect(res.status).toBe(500);
   });
+
+  it('rejects an upload larger than the size limit with a 400, not a 500', async () => {
+    const oversized = Buffer.alloc(11 * 1024 * 1024, 1);
+
+    const res = await request(app).post('/font-matches').attach('image', oversized, 'huge.png');
+
+    expect(res.status).toBe(400);
+    expect(getEmbedding).not.toHaveBeenCalled();
+  });
 });

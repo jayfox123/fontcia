@@ -8,7 +8,9 @@ import { toVectorLiteral } from '../lib/vector-format';
 
 export const fontMatchesRouter = Router();
 
-const upload = multer({ storage: multer.memoryStorage() });
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_BYTES } });
 
 const TOP_K = 5;
 
