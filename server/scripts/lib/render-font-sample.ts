@@ -1,5 +1,12 @@
 import type { Browser } from 'puppeteer';
 
+// This project doesn't include the DOM lib (its Node/fetch/Blob globals
+// would otherwise collide with the DOM ones), but page.evaluate's callback
+// below runs inside the browser page, not Node, where `document` is real.
+// Declaring just the one property this file actually uses keeps that
+// browser-context type local instead of pulling in all of DOM lib.
+declare const document: { fonts: { ready: Promise<unknown> } };
+
 // Real-browser-only glue (Puppeteer) — not unit-tested, same treatment
 // google-fonts.ts's fetchGoogleFontDataUrl got above. Verified by actually
 // running build-reference-set.ts and evaluate-matching.ts.

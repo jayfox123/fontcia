@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "build-reference-set": "tsx scripts/build-reference-set.ts",
     "evaluate-matching": "tsx scripts/evaluate-matching.ts"
   },
