@@ -941,6 +941,55 @@ describe('renderLockedSelection', () => {
     expect(saveButtonsAfter[1].textContent).toBe('★ Saved'); // Roboto now saved
   });
 
+  it('re-renders the ranked-matches Save buttons when auth state changes via storage.onChanged', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const fakeBlob = new Blob(['fake image data'], { type: 'image/png' });
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'captured', blob: fakeBlob };
+      if (message.type === 'MATCH_IMAGE') {
+        return {
+          status: 'ok',
+          matches: [{ fontName: 'Inter', confidence: 82, sources: [] }],
+        };
+      }
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: false } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect((panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).textContent).toBe('Log in to save');
+
+    // Simulate the user logging in from a separate tab, exactly as
+    // chrome.storage.onChanged would fire when that page's background write
+    // completes.
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+    const changeListener = chromeMock.storage.onChanged.addListener.mock.calls[0][0];
+    changeListener({ 'fontcia-auth': { newValue: {} } }, 'local');
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect((panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).textContent).toBe('☆ Save');
+  });
+
   it('renders the capture-blocked state when the response is blocked', async () => {
     const container = document.createElement('div');
     const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));

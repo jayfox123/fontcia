@@ -381,7 +381,12 @@ export function renderLockedSelection(
 
   function handleAuthChange(changes: Record<string, unknown>, areaName: string): void {
     if (areaName !== 'local' || !('fontcia-auth' in changes)) return;
+    // Only one of currentResult/currentCandidates is ever active at a time —
+    // each render function already no-ops when its own state is null, so
+    // calling both unconditionally re-renders whichever view is actually on
+    // screen without needing to track which flow is active separately.
     void renderResult();
+    void renderCandidates();
   }
 
   chrome.storage.onChanged.addListener(handleAuthChange);
