@@ -207,7 +207,12 @@ export async function matchImage(blob: Blob): Promise<ApiResponse<RankedMatch[]>
 
   // Bypasses apiFetch/rawRequest — those hardcode JSON.stringify + a
   // Content-Type: application/json header, incompatible with the
-  // multipart/form-data body multer expects on this one endpoint.
+  // multipart/form-data body multer expects on this one endpoint. That also
+  // means, unlike logScan (which goes through apiFetch's auth:'optional' and
+  // does attach a token when one is stored), this never sends Authorization
+  // even for a logged-in user — harmless today since /font-matches ignores
+  // req.userId entirely, but worth revisiting if this route is ever
+  // extended to associate matches with an account.
   const res = await fetch(`${API_BASE_URL}/font-matches`, { method: 'POST', body: formData });
 
   let json: unknown = null;

@@ -295,6 +295,14 @@ describe('matchImage', () => {
     expect(requestInit.method).toBe('POST');
     expect(requestInit.body).toBeInstanceOf(FormData);
     expect(requestInit.headers).toBeUndefined();
+
+    // The server's multer().single('image') requires this exact field name —
+    // a silent rename here would 400 in production while every other
+    // assertion above kept passing.
+    const uploaded = (requestInit.body as FormData).get('image') as File;
+    expect(uploaded.name).toBe('crop.png');
+    expect(uploaded.size).toBe(blob.size);
+    expect(uploaded.type).toBe(blob.type);
   });
 
   it('returns the server error message on a non-2xx response', async () => {
