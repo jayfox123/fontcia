@@ -325,6 +325,51 @@ describe('handleCaptureMessage', () => {
   });
 });
 
+describe('handleMatchImageMessage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('calls matchImage with the blob and maps a successful ApiResponse to an ok MatchImageResponse', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(async () => ({ ok: true, data: [{ fontName: 'Inter', confidence: 82, sources: [] }] })),
+    }));
+    const { handleMatchImageMessage } = await import('../src/background/service-worker');
+    const { matchImage } = await import('../src/background/api-client');
+
+    const blob = new Blob(['fake image data']);
+    const result = await handleMatchImageMessage({ type: 'MATCH_IMAGE', blob });
+
+    expect(matchImage).toHaveBeenCalledWith(blob);
+    expect(result).toEqual({ status: 'ok', matches: [{ fontName: 'Inter', confidence: 82, sources: [] }] });
+  });
+
+  it('maps a failed ApiResponse to an error MatchImageResponse', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(async () => ({ ok: false, error: 'embedding service unreachable' })),
+    }));
+    const { handleMatchImageMessage } = await import('../src/background/service-worker');
+
+    const result = await handleMatchImageMessage({ type: 'MATCH_IMAGE', blob: new Blob() });
+
+    expect(result).toEqual({ status: 'error', message: 'embedding service unreachable' });
+  });
+});
+
 describe('module load side effects', () => {
   it('grants content scripts access to chrome.storage.session on module load', () => {
     // The top-level `import '../src/background/service-worker'` above runs once,

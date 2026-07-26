@@ -1,8 +1,9 @@
 import { isSelectionActive, markSelectionActive } from '../shared/session-state';
-import { signup, login, logout, getAuthState, saveFont, deleteSavedFont, logScan } from './api-client';
+import { signup, login, logout, getAuthState, saveFont, deleteSavedFont, logScan, matchImage } from './api-client';
 import { captureAndCropSelection } from './image-capture';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
+import type { MatchImageMessage, MatchImageResponse } from '../shared/match-messages';
 
 const CONTENT_SCRIPT_FILE = 'content/overlay.js';
 const UNAVAILABLE_BADGE_DURATION_MS = 1500;
@@ -121,10 +122,24 @@ export async function handleCaptureMessage(
   return captureAndCropSelection(windowId, message.rect, message.devicePixelRatio);
 }
 
+export async function handleMatchImageMessage(message: MatchImageMessage): Promise<MatchImageResponse> {
+  const result = await matchImage(message.blob);
+  if (result.ok) {
+    return { status: 'ok', matches: result.data };
+  }
+  return { status: 'error', message: result.error };
+}
+
 chrome.runtime.onMessage.addListener(
-  (message: ApiMessage | CaptureSelectionMessage, sender: chrome.runtime.MessageSender, sendResponse) => {
+  (
+    message: ApiMessage | CaptureSelectionMessage | MatchImageMessage,
+    sender: chrome.runtime.MessageSender,
+    sendResponse,
+  ) => {
     if (message.type === 'CAPTURE_SELECTION') {
       handleCaptureMessage(message, sender).then(sendResponse);
+    } else if (message.type === 'MATCH_IMAGE') {
+      handleMatchImageMessage(message).then(sendResponse);
     } else {
       handleApiMessage(message).then(sendResponse);
     }
