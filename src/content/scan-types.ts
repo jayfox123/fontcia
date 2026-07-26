@@ -1,3 +1,5 @@
+import type { RankedMatch } from '../shared/match-messages';
+
 export interface ScanSource {
   url: string;
   label: string;
@@ -17,3 +19,8 @@ export interface NoMatchResult {
 }
 
 export type ScanResult = MatchResult | NoMatchResult;
+
+export type ImageMatchResult =
+  | { status: 'matches'; candidates: RankedMatch[] }
+  | { status: 'no-confident-match' }
+  | { status: 'error' };
