@@ -9,6 +9,7 @@ import {
   saveFont,
   deleteSavedFont,
   logScan,
+  matchImage,
 } from '../src/background/api-client';
 import { getStoredAuth, setStoredAuth } from '../src/background/auth-storage';
 
@@ -277,5 +278,38 @@ describe('logScan', () => {
     expect(result).toEqual({ ok: true, data: null });
     const [, requestInit] = fetchMock.mock.calls[0];
     expect(requestInit.headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('matchImage', () => {
+  it('posts the blob as multipart form data and returns the matches array', async () => {
+    const matches = [{ fontName: 'Inter', confidence: 82, sources: [] }];
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { matches }));
+
+    const blob = new Blob(['fake image data'], { type: 'image/png' });
+    const result = await matchImage(blob);
+
+    expect(result).toEqual({ ok: true, data: matches });
+    const [url, requestInit] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost:3001/font-matches');
+    expect(requestInit.method).toBe('POST');
+    expect(requestInit.body).toBeInstanceOf(FormData);
+    expect(requestInit.headers).toBeUndefined();
+  });
+
+  it('returns the server error message on a non-2xx response', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: 'image is required' }));
+
+    const result = await matchImage(new Blob());
+
+    expect(result).toEqual({ ok: false, error: 'image is required' });
+  });
+
+  it('falls back to a generic error when the error response has no JSON body', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(500));
+
+    const result = await matchImage(new Blob());
+
+    expect(result).toEqual({ ok: false, error: 'Request failed with status 500' });
   });
 });

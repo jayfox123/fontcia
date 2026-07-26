@@ -2,6 +2,7 @@ import { API_BASE_URL } from '../shared/api-config';
 import { getStoredAuth, setStoredAuth, clearStoredAuth } from './auth-storage';
 import type { ApiResponse } from '../shared/api-messages';
 import type { ScanSource } from '../content/scan-types';
+import type { RankedMatch } from '../shared/match-messages';
 
 interface FetchOptions {
   method: 'GET' | 'POST' | 'DELETE';
@@ -198,4 +199,29 @@ export async function logScan(
 
   if (!result.ok) return result;
   return { ok: true, data: null };
+}
+
+export async function matchImage(blob: Blob): Promise<ApiResponse<RankedMatch[]>> {
+  const formData = new FormData();
+  formData.append('image', blob, 'crop.png');
+
+  // Bypasses apiFetch/rawRequest — those hardcode JSON.stringify + a
+  // Content-Type: application/json header, incompatible with the
+  // multipart/form-data body multer expects on this one endpoint.
+  const res = await fetch(`${API_BASE_URL}/font-matches`, { method: 'POST', body: formData });
+
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+
+  if (res.status >= 200 && res.status < 300) {
+    const data = json as { matches: RankedMatch[] };
+    return { ok: true, data: data.matches };
+  }
+
+  const errorMessage = (json as { error?: string } | null)?.error ?? `Request failed with status ${res.status}`;
+  return { ok: false, error: errorMessage };
 }
