@@ -1,7 +1,8 @@
 import type { Rect } from '../shared/selection-box';
-import type { MatchResult, ScanResult } from './scan-types';
+import type { MatchResult, ScanResult, ImageMatchResult } from './scan-types';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
+import type { MatchImageMessage, MatchImageResponse, RankedMatch } from '../shared/match-messages';
 import { resolveFontFromSelection } from './font-resolver';
 import {
   renderReadyState,
@@ -10,6 +11,9 @@ import {
   renderNoMatchState,
   renderAnalyzingImageState,
   renderCaptureBlockedState,
+  renderRankedMatchesState,
+  renderNoConfidentMatchState,
+  renderMatchErrorState,
 } from './scan-dialogue';
 
 export interface LockedSelectionElements {
@@ -95,11 +99,13 @@ export function renderLockedSelection(
   // flag: renderResult() no-ops while it's set, and handleToggleSave() itself
   // refuses to start a second round trip while one is pending.
   let togglePending = false;
-  // Held for a future sub-project's image-matching call — not read anywhere
-  // in this sub-project, which is capture-and-crop plumbing only. Deliberately
-  // still assigned (not just logged) so it survives past this closure's
-  // console.log call, ready for that later consumer.
-  let capturedImageBlob: Blob | null = null;
+  // Same shape as currentResult/savedFontId/togglePending above, but the
+  // image-match path can show several independently-saveable candidates at
+  // once, so each piece of per-candidate state is its own parallel array
+  // instead of a single scalar.
+  let currentCandidates: RankedMatch[] | null = null;
+  let candidateSavedIds: (string | null)[] = [];
+  let candidateTogglePending: boolean[] = [];
 
   function handleLoginPrompt(): void {
     window.open(chrome.runtime.getURL('login/login.html'), '_blank');
@@ -184,6 +190,83 @@ export function renderLockedSelection(
     }
   }
 
+  async function renderCandidates(): Promise<void> {
+    if (!currentCandidates) return;
+    let isLoggedIn = false;
+    try {
+      const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+      isLoggedIn = authRes.ok && authRes.data.loggedIn;
+    } catch (error: unknown) {
+      console.error('fontCIA: failed to check auth state', error);
+    }
+    if (disposed || !currentCandidates) return;
+    renderRankedMatchesState(
+      body,
+      currentCandidates,
+      candidateSavedIds.map((id) => id !== null),
+      handleToggleCandidateSave,
+      onRestart,
+      isLoggedIn,
+      handleLoginPrompt,
+    );
+  }
+
+  function showCandidates(candidates: RankedMatch[]): void {
+    currentCandidates = candidates;
+    candidateSavedIds = candidates.map(() => null);
+    candidateTogglePending = candidates.map(() => false);
+    void renderCandidates();
+  }
+
+  function handleToggleCandidateSave(index: number): void {
+    if (!currentCandidates || candidateTogglePending[index]) return;
+    const candidate = currentCandidates[index];
+    candidateTogglePending[index] = true;
+    const wasSaved = candidateSavedIds[index] !== null;
+    const saveBtn = body.querySelector(`[data-candidate-index="${index}"]`) as HTMLButtonElement | null;
+    if (saveBtn) saveBtn.disabled = true;
+
+    if (wasSaved) {
+      const idToDelete = candidateSavedIds[index] as string;
+      sendApiMessage<null>({ type: 'DELETE_SAVED_FONT', id: idToDelete })
+        .then((res) => {
+          candidateTogglePending[index] = false;
+          if (disposed) return;
+          if (res.ok) {
+            candidateSavedIds[index] = null;
+          } else {
+            console.error('fontCIA: unsave failed', res.error);
+          }
+          void renderCandidates();
+        })
+        .catch((error: unknown) => {
+          candidateTogglePending[index] = false;
+          if (disposed) return;
+          console.error('fontCIA: unsave failed', error);
+          if (saveBtn) saveBtn.disabled = false;
+        });
+    } else {
+      const { fontName, confidence, sources } = candidate;
+      sendApiMessage<{ id: string }>({ type: 'SAVE_FONT', fontName, confidence, sources })
+        .then((res) => {
+          candidateTogglePending[index] = false;
+          if (disposed) return;
+          if (res.ok) {
+            candidateSavedIds[index] = res.data.id;
+          } else {
+            console.error('fontCIA: save failed', res.error);
+          }
+          void renderCandidates();
+        })
+        .catch((error: unknown) => {
+          candidateTogglePending[index] = false;
+          if (disposed) return;
+          console.error('fontCIA: save failed', error);
+          if (saveBtn) saveBtn.disabled = false;
+        });
+    }
+  }
+
   function handleNoTextResult(): void {
     renderAnalyzingImageState(body);
     const message: CaptureSelectionMessage = {
@@ -196,10 +279,7 @@ export function renderLockedSelection(
       .then((response: CaptureResponse) => {
         if (disposed) return;
         if (response.status === 'captured') {
-          capturedImageBlob = response.blob;
-          console.log('fontCIA: captured image for analysis', capturedImageBlob);
-          // Stays on "Analyzing image…" — no matcher exists yet; a future
-          // sub-project replaces this branch with a real result render.
+          handleImageCapture(response.blob);
         } else if (response.status === 'blocked') {
           renderCaptureBlockedState(body, onRestart);
         } else {
@@ -211,6 +291,53 @@ export function renderLockedSelection(
         if (disposed) return;
         console.error('fontCIA: image capture message failed', error);
         renderCaptureBlockedState(body, onRestart);
+      });
+  }
+
+  function logImageMatchResult(result: ImageMatchResult): void {
+    const message: ApiMessage =
+      result.status === 'matches'
+        ? {
+            type: 'LOG_SCAN',
+            status: 'match',
+            fontName: result.candidates[0].fontName,
+            confidence: result.candidates[0].confidence,
+          }
+        : { type: 'LOG_SCAN', status: 'no-match' };
+    sendApiMessage<null>(message).catch((error: unknown) => {
+      console.error('fontCIA: scan logging failed', error);
+    });
+  }
+
+  function renderImageMatchResult(result: ImageMatchResult): void {
+    if (result.status === 'matches') {
+      showCandidates(result.candidates);
+    } else if (result.status === 'no-confident-match') {
+      renderNoConfidentMatchState(body, onRestart);
+    } else {
+      renderMatchErrorState(body, onRestart);
+    }
+  }
+
+  function handleImageCapture(blob: Blob): void {
+    const message: MatchImageMessage = { type: 'MATCH_IMAGE', blob };
+    chrome.runtime
+      .sendMessage(message)
+      .then((response: MatchImageResponse) => {
+        if (disposed) return;
+        const result: ImageMatchResult =
+          response.status === 'ok'
+            ? response.matches.length > 0
+              ? { status: 'matches', candidates: response.matches }
+              : { status: 'no-confident-match' }
+            : { status: 'error' };
+        logImageMatchResult(result);
+        renderImageMatchResult(result);
+      })
+      .catch((error: unknown) => {
+        if (disposed) return;
+        console.error('fontCIA: image match message failed', error);
+        renderMatchErrorState(body, onRestart);
       });
   }
 
