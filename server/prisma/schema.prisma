@@ -8,13 +8,15 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  createdAt     DateTime       @default(now())
-  savedFonts    SavedFont[]
-  scans         Scan[]
-  refreshTokens RefreshToken[]
+  id                          String                       @id @default(uuid())
+  email                       String                       @unique
+  passwordHash                String
+  createdAt                   DateTime                     @default(now())
+  savedFonts                  SavedFont[]
+  scans                       Scan[]
+  refreshTokens               RefreshToken[]
+  fontSubmissions             FontSubmission[]
+  fontSubmissionConfirmations FontSubmissionConfirmation[]
 }
 
 model SavedFont {
@@ -65,4 +67,27 @@ model FontEmbedding {
   createdAt     DateTime @default(now())
 
   @@unique([fontId, renderVariant])
+}
+
+model FontSubmission {
+  id            String                       @id @default(uuid())
+  fontName      String
+  sourceUrl     String?
+  sampleImage   Bytes
+  submittedBy   String
+  submitter     User                         @relation(fields: [submittedBy], references: [id])
+  status        String // 'pending' | 'promoted'
+  createdAt     DateTime                     @default(now())
+  confirmations FontSubmissionConfirmation[]
+}
+
+model FontSubmissionConfirmation {
+  id           String         @id @default(uuid())
+  submissionId String
+  submission   FontSubmission @relation(fields: [submissionId], references: [id])
+  confirmedBy  String
+  confirmer    User           @relation(fields: [confirmedBy], references: [id])
+  createdAt    DateTime       @default(now())
+
+  @@unique([submissionId, confirmedBy])
 }
