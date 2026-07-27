@@ -195,4 +195,41 @@ export const themeCss = `
   font-size: 12px;
   color: var(--fontcia-text);
 }
+
+.fontcia-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--fontcia-border);
+  border-radius: 6px;
+  background: var(--fontcia-bg);
+  color: var(--fontcia-text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.fontcia-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.fontcia-suggestion-item {
+  text-align: left;
+  border: 1px solid var(--fontcia-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--fontcia-text);
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.fontcia-suggestion-item:hover {
+  background: var(--fontcia-border);
+}
 `;

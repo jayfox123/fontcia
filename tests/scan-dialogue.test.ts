@@ -9,9 +9,14 @@ import {
   renderRankedMatchesState,
   renderNoConfidentMatchState,
   renderMatchErrorState,
+  renderUnrecognizedFontState,
+  renderEnrollmentFormState,
+  renderEnrollmentSubmittedState,
+  renderEnrollmentErrorState,
 } from '../src/content/scan-dialogue';
 import type { MatchResult } from '../src/content/scan-types';
 import type { RankedMatch } from '../src/shared/match-messages';
+import type { PendingSuggestion } from '../src/content/scan-dialogue';
 
 describe('renderReadyState', () => {
   it('renders a Scan button that calls onScan when clicked', () => {
@@ -311,7 +316,7 @@ describe('renderNoConfidentMatchState', () => {
   it('renders distinct copy from renderNoMatchState, with a New scan button', () => {
     const body = document.createElement('div');
 
-    renderNoConfidentMatchState(body, vi.fn());
+    renderNoConfidentMatchState(body, true, vi.fn(), vi.fn(), vi.fn());
 
     expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe(
       "Couldn't find a confident match for this font.",
@@ -324,13 +329,41 @@ describe('renderNoConfidentMatchState', () => {
     const body = document.createElement('div');
     const onNewScan = vi.fn();
 
-    renderNoConfidentMatchState(body, onNewScan);
+    renderNoConfidentMatchState(body, true, vi.fn(), vi.fn(), onNewScan);
 
     const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
     const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
     newScanBtn.click();
 
     expect(onNewScan).toHaveBeenCalledOnce();
+  });
+
+  it('shows an enabled Name it button and calls onNameIt when logged in', () => {
+    const body = document.createElement('div');
+    const onNameIt = vi.fn();
+
+    renderNoConfidentMatchState(body, true, onNameIt, vi.fn(), vi.fn());
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const nameItBtn = buttons.find((b) => b.textContent === 'Name it') as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(false);
+
+    nameItBtn.click();
+    expect(onNameIt).toHaveBeenCalledOnce();
+  });
+
+  it('shows a "Log in to name it" button instead when not logged in', () => {
+    const body = document.createElement('div');
+    const onLoginPrompt = vi.fn();
+
+    renderNoConfidentMatchState(body, false, vi.fn(), onLoginPrompt, vi.fn());
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const loginBtn = buttons.find((b) => b.textContent === 'Log in to name it') as HTMLButtonElement;
+    expect(buttons.some((b) => b.textContent === 'Name it')).toBe(false);
+
+    loginBtn.click();
+    expect(onLoginPrompt).toHaveBeenCalledOnce();
   });
 });
 
@@ -355,6 +388,221 @@ describe('renderMatchErrorState', () => {
 
     const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
     const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+    newScanBtn.click();
+
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderUnrecognizedFontState', () => {
+  it('renders the same message copy as renderNoMatchState, with an enabled Name it button when logged in', () => {
+    const body = document.createElement('div');
+    const onNameIt = vi.fn();
+
+    renderUnrecognizedFontState(body, true, onNameIt, vi.fn(), vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe("We don't recognize this one.");
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const nameItBtn = buttons.find((b) => b.textContent === 'Name it') as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(false);
+
+    nameItBtn.click();
+    expect(onNameIt).toHaveBeenCalledOnce();
+  });
+
+  it('shows a "Log in to name it" button instead when not logged in', () => {
+    const body = document.createElement('div');
+    const onLoginPrompt = vi.fn();
+
+    renderUnrecognizedFontState(body, false, vi.fn(), onLoginPrompt, vi.fn());
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    expect(buttons.some((b) => b.textContent === 'Name it')).toBe(false);
+    const loginBtn = buttons.find((b) => b.textContent === 'Log in to name it') as HTMLButtonElement;
+
+    loginBtn.click();
+    expect(onLoginPrompt).toHaveBeenCalledOnce();
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderUnrecognizedFontState(body, true, vi.fn(), vi.fn(), onNewScan);
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    const newScanBtn = buttons.find((b) => b.textContent === 'New scan') as HTMLButtonElement;
+    newScanBtn.click();
+
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderEnrollmentFormState', () => {
+  const suggestions: PendingSuggestion[] = [
+    { id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 },
+    { id: 'sub-2', fontName: 'Brandon Text', confirmationCount: 2 },
+  ];
+
+  it('renders a font-name input, a source-URL input, a Submit button, and a Cancel button', () => {
+    const body = document.createElement('div');
+
+    renderEnrollmentFormState(body, [], vi.fn(), vi.fn(), vi.fn());
+
+    const inputs = body.querySelectorAll('.fontcia-input');
+    expect(inputs).toHaveLength(2);
+    expect((inputs[0] as HTMLInputElement).placeholder).toBe('Font name');
+    expect((inputs[1] as HTMLInputElement).placeholder).toBe('Source URL (optional)');
+
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn'));
+    expect(buttons.some((b) => b.textContent === 'Submit')).toBe(true);
+    expect(buttons.some((b) => b.textContent === 'Cancel')).toBe(true);
+  });
+
+  it('shows no suggestions until the font-name input has text', () => {
+    const body = document.createElement('div');
+
+    renderEnrollmentFormState(body, suggestions, vi.fn(), vi.fn(), vi.fn());
+
+    expect(body.querySelectorAll('.fontcia-suggestion-item')).toHaveLength(0);
+  });
+
+  it('live-filters suggestions as the user types, case-insensitively', () => {
+    const body = document.createElement('div');
+
+    renderEnrollmentFormState(body, suggestions, vi.fn(), vi.fn(), vi.fn());
+
+    const nameInput = body.querySelector('.fontcia-input') as HTMLInputElement;
+    nameInput.value = 'GROTESQUE';
+    nameInput.dispatchEvent(new Event('input'));
+
+    const items = body.querySelectorAll('.fontcia-suggestion-item');
+    expect(items).toHaveLength(1);
+    expect(items[0].textContent).toContain('Brandon Grotesque');
+    expect(items[0].textContent).toContain('1 confirmation so far');
+  });
+
+  it('calls onConfirmExisting with the picked suggestion\'s id when clicked', () => {
+    const body = document.createElement('div');
+    const onConfirmExisting = vi.fn();
+
+    renderEnrollmentFormState(body, suggestions, onConfirmExisting, vi.fn(), vi.fn());
+
+    const nameInput = body.querySelector('.fontcia-input') as HTMLInputElement;
+    nameInput.value = 'brandon';
+    nameInput.dispatchEvent(new Event('input'));
+
+    const items = Array.from(body.querySelectorAll('.fontcia-suggestion-item')) as HTMLButtonElement[];
+    expect(items).toHaveLength(2);
+    items[1].click();
+
+    expect(onConfirmExisting).toHaveBeenCalledWith('sub-2');
+  });
+
+  it('calls onSubmitNew with the typed name and source URL when Submit is clicked', () => {
+    const body = document.createElement('div');
+    const onSubmitNew = vi.fn();
+
+    renderEnrollmentFormState(body, [], vi.fn(), onSubmitNew, vi.fn());
+
+    const inputs = body.querySelectorAll('.fontcia-input') as NodeListOf<HTMLInputElement>;
+    inputs[0].value = 'New Font Name';
+    inputs[1].value = 'https://example.com';
+
+    const submitBtn = Array.from(body.querySelectorAll('.fontcia-btn-primary')).find(
+      (b) => b.textContent === 'Submit',
+    ) as HTMLButtonElement;
+    submitBtn.click();
+
+    expect(onSubmitNew).toHaveBeenCalledWith('New Font Name', 'https://example.com');
+  });
+
+  it('passes null for sourceUrl when it was left blank', () => {
+    const body = document.createElement('div');
+    const onSubmitNew = vi.fn();
+
+    renderEnrollmentFormState(body, [], vi.fn(), onSubmitNew, vi.fn());
+
+    const nameInput = body.querySelector('.fontcia-input') as HTMLInputElement;
+    nameInput.value = 'New Font Name';
+
+    const submitBtn = Array.from(body.querySelectorAll('.fontcia-btn-primary')).find(
+      (b) => b.textContent === 'Submit',
+    ) as HTMLButtonElement;
+    submitBtn.click();
+
+    expect(onSubmitNew).toHaveBeenCalledWith('New Font Name', null);
+  });
+
+  it('does not call onSubmitNew when the font name is blank', () => {
+    const body = document.createElement('div');
+    const onSubmitNew = vi.fn();
+
+    renderEnrollmentFormState(body, [], vi.fn(), onSubmitNew, vi.fn());
+
+    const submitBtn = Array.from(body.querySelectorAll('.fontcia-btn-primary')).find(
+      (b) => b.textContent === 'Submit',
+    ) as HTMLButtonElement;
+    submitBtn.click();
+
+    expect(onSubmitNew).not.toHaveBeenCalled();
+  });
+
+  it('calls onCancel when Cancel is clicked', () => {
+    const body = document.createElement('div');
+    const onCancel = vi.fn();
+
+    renderEnrollmentFormState(body, [], vi.fn(), vi.fn(), onCancel);
+
+    const cancelBtn = Array.from(body.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Cancel',
+    ) as HTMLButtonElement;
+    cancelBtn.click();
+
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderEnrollmentSubmittedState', () => {
+  it('renders a thank-you message and a New scan button', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderEnrollmentSubmittedState(body, onNewScan);
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe(
+      'Thanks! Pending community confirmation.',
+    );
+    const newScanBtn = Array.from(body.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'New scan',
+    ) as HTMLButtonElement;
+    newScanBtn.click();
+    expect(onNewScan).toHaveBeenCalledOnce();
+  });
+});
+
+describe('renderEnrollmentErrorState', () => {
+  it('renders distinct copy from the other message states, with a New scan button', () => {
+    const body = document.createElement('div');
+
+    renderEnrollmentErrorState(body, vi.fn());
+
+    expect(body.querySelector('.fontcia-no-match-message')?.textContent).toBe(
+      'Something went wrong submitting this.',
+    );
+    const buttons = Array.from(body.querySelectorAll('.fontcia-btn-secondary'));
+    expect(buttons.some((b) => b.textContent === 'New scan')).toBe(true);
+  });
+
+  it('calls onNewScan when the New scan button is clicked', () => {
+    const body = document.createElement('div');
+    const onNewScan = vi.fn();
+
+    renderEnrollmentErrorState(body, onNewScan);
+
+    const newScanBtn = Array.from(body.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'New scan',
+    ) as HTMLButtonElement;
     newScanBtn.click();
 
     expect(onNewScan).toHaveBeenCalledOnce();
