@@ -249,6 +249,55 @@ describe('handleApiMessage', () => {
     expect(logScan).toHaveBeenCalledWith('match', 'Inter', 92);
   });
 
+  it('dispatches GET_PENDING_SUBMISSIONS to the api-client getPendingSubmissions function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(async () => ({
+        ok: true,
+        data: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }],
+      })),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { getPendingSubmissions } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'GET_PENDING_SUBMISSIONS' });
+
+    expect(getPendingSubmissions).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: true, data: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }] });
+  });
+
+  it('dispatches CONFIRM_FONT_SUBMISSION to the api-client confirmFontSubmission function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(async () => ({ ok: true, data: { status: 'pending', confirmationCount: 2 } })),
+      submitFont: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { confirmFontSubmission } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'CONFIRM_FONT_SUBMISSION', id: 'sub-1' });
+
+    expect(confirmFontSubmission).toHaveBeenCalledWith('sub-1');
+    expect(result).toEqual({ ok: true, data: { status: 'pending', confirmationCount: 2 } });
+  });
+
   it('returns an error response for an unrecognized message type', async () => {
     vi.doMock('../src/background/api-client', () => ({
       signup: vi.fn(),
@@ -385,6 +434,95 @@ describe('handleMatchImageMessage', () => {
     const { handleMatchImageMessage } = await import('../src/background/service-worker');
 
     const result = await handleMatchImageMessage({ type: 'MATCH_IMAGE', blob: new Blob() });
+
+    expect(result).toEqual({ status: 'error', message: 'Network error — please try again' });
+  });
+});
+
+describe('handleSubmitFontMessage', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('calls submitFont with the message fields and maps a successful ApiResponse to an ok SubmitFontResponse', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(async () => ({ ok: true, data: { submissionId: 'sub-1' } })),
+    }));
+    const { handleSubmitFontMessage } = await import('../src/background/service-worker');
+    const { submitFont } = await import('../src/background/api-client');
+
+    const blob = new Blob(['fake image data']);
+    const result = await handleSubmitFontMessage({
+      type: 'SUBMIT_FONT',
+      fontName: 'Brandon Grotesque',
+      sourceUrl: null,
+      blob,
+    });
+
+    expect(submitFont).toHaveBeenCalledWith('Brandon Grotesque', null, blob);
+    expect(result).toEqual({ status: 'ok', submissionId: 'sub-1' });
+  });
+
+  it('maps a failed ApiResponse to an error SubmitFontResponse', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(async () => ({ ok: false, error: 'fontName is required' })),
+    }));
+    const { handleSubmitFontMessage } = await import('../src/background/service-worker');
+
+    const result = await handleSubmitFontMessage({
+      type: 'SUBMIT_FONT',
+      fontName: '',
+      sourceUrl: null,
+      blob: new Blob(),
+    });
+
+    expect(result).toEqual({ status: 'error', message: 'fontName is required' });
+  });
+
+  it('returns a network-error response instead of rejecting when submitFont itself throws', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(async () => {
+        throw new Error('fetch failed');
+      }),
+    }));
+    const { handleSubmitFontMessage } = await import('../src/background/service-worker');
+
+    const result = await handleSubmitFontMessage({
+      type: 'SUBMIT_FONT',
+      fontName: 'Brandon Grotesque',
+      sourceUrl: null,
+      blob: new Blob(),
+    });
 
     expect(result).toEqual({ status: 'error', message: 'Network error — please try again' });
   });

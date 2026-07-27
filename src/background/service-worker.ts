@@ -1,9 +1,22 @@
 import { isSelectionActive, markSelectionActive } from '../shared/session-state';
-import { signup, login, logout, getAuthState, saveFont, deleteSavedFont, logScan, matchImage } from './api-client';
+import {
+  signup,
+  login,
+  logout,
+  getAuthState,
+  saveFont,
+  deleteSavedFont,
+  logScan,
+  matchImage,
+  getPendingSubmissions,
+  confirmFontSubmission,
+  submitFont,
+} from './api-client';
 import { captureAndCropSelection } from './image-capture';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
 import type { MatchImageMessage, MatchImageResponse } from '../shared/match-messages';
+import type { SubmitFontMessage, SubmitFontResponse } from '../shared/submission-messages';
 
 const CONTENT_SCRIPT_FILE = 'content/overlay.js';
 const UNAVAILABLE_BADGE_DURATION_MS = 1500;
@@ -94,6 +107,10 @@ export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse
         return await deleteSavedFont(message.id);
       case 'LOG_SCAN':
         return await logScan(message.status, message.fontName, message.confidence);
+      case 'GET_PENDING_SUBMISSIONS':
+        return await getPendingSubmissions();
+      case 'CONFIRM_FONT_SUBMISSION':
+        return await confirmFontSubmission(message.id);
       default:
         return { ok: false, error: 'Unknown message type' };
     }
@@ -141,9 +158,26 @@ export async function handleMatchImageMessage(message: MatchImageMessage): Promi
   }
 }
 
+export async function handleSubmitFontMessage(message: SubmitFontMessage): Promise<SubmitFontResponse> {
+  try {
+    const result = await submitFont(message.fontName, message.sourceUrl, message.blob);
+    if (result.ok) {
+      return { status: 'ok', submissionId: result.data.submissionId };
+    }
+    return { status: 'error', message: result.error };
+  } catch (error) {
+    // Same hazard handleMatchImageMessage's catch block already documents:
+    // submitFont's fetch() call isn't wrapped internally, so a real network
+    // failure would otherwise propagate an uncaught rejection here and hang
+    // the content script waiting for a sendResponse that never comes.
+    console.error('fontCIA: handleSubmitFontMessage failed', error);
+    return { status: 'error', message: 'Network error — please try again' };
+  }
+}
+
 chrome.runtime.onMessage.addListener(
   (
-    message: ApiMessage | CaptureSelectionMessage | MatchImageMessage,
+    message: ApiMessage | CaptureSelectionMessage | MatchImageMessage | SubmitFontMessage,
     sender: chrome.runtime.MessageSender,
     sendResponse,
   ) => {
@@ -151,6 +185,8 @@ chrome.runtime.onMessage.addListener(
       handleCaptureMessage(message, sender).then(sendResponse);
     } else if (message.type === 'MATCH_IMAGE') {
       handleMatchImageMessage(message).then(sendResponse);
+    } else if (message.type === 'SUBMIT_FONT') {
+      handleSubmitFontMessage(message).then(sendResponse);
     } else {
       handleApiMessage(message).then(sendResponse);
     }
