@@ -109,7 +109,7 @@ describe('POST /font-submissions', () => {
     expect(confirmations).toHaveLength(1);
   });
 
-  it('fills in a missing sourceUrl from a confirming resubmission without overwriting an existing one', async () => {
+  it("stores a confirming resubmitter's own sourceUrl on their confirmation, without touching the original submission's sourceUrl", async () => {
     const firstRes = await request(app)
       .post('/font-submissions')
       .set('Authorization', `Bearer ${submitterToken}`)
@@ -125,7 +125,94 @@ describe('POST /font-submissions', () => {
       .attach('image', Buffer.from('fake-image'), 'sample.png');
 
     const stored = await prisma.fontSubmission.findUnique({ where: { id: firstRes.body.submissionId } });
-    expect(stored?.sourceUrl).toBe('https://example.com/brandon');
+    expect(stored?.sourceUrl).toBeNull();
+
+    const confirmation = await prisma.fontSubmissionConfirmation.findFirst({
+      where: { submissionId: firstRes.body.submissionId },
+    });
+    expect(confirmation?.sourceUrl).toBe('https://example.com/brandon');
+  });
+
+  it('creates a findable Font row with deduped, correctly-voted FontSource rows on promotion', async () => {
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'Brandon Grotesque')
+      .field('sourceUrl', 'https://fonts.adobe.com/fonts/brandon-grotesque')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerAToken = await signupUser('confirmer-a@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerAToken}`)
+      .send({ sourceUrl: 'https://fonts.adobe.com/fonts/brandon-grotesque' });
+
+    const confirmerBToken = await signupUser('confirmer-b@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerBToken}`)
+      .send({ sourceUrl: 'https://www.myfonts.com/fonts/brandon-grotesque' });
+
+    const font = await prisma.font.findUnique({
+      where: { name: 'Brandon Grotesque' },
+      include: { sources: true },
+    });
+    expect(font).not.toBeNull();
+    expect(font?.matchKeys).toEqual(['brandon grotesque']);
+    expect(font?.sources).toHaveLength(2);
+
+    const adobeSource = font?.sources.find((s) => s.url === 'https://fonts.adobe.com/fonts/brandon-grotesque');
+    expect(adobeSource?.votes).toBe(2);
+    expect(adobeSource?.label).toBe('fonts.adobe.com');
+
+    const myFontsSource = font?.sources.find((s) => s.url === 'https://www.myfonts.com/fonts/brandon-grotesque');
+    expect(myFontsSource?.votes).toBe(1);
+    expect(myFontsSource?.label).toBe('www.myfonts.com');
+  });
+
+  it('promotes with zero FontSource rows when nobody proposed a sourceUrl', async () => {
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'Brandon Grotesque')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerAToken = await signupUser('confirmer-a@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerAToken}`);
+
+    const confirmerBToken = await signupUser('confirmer-b@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerBToken}`);
+
+    const font = await prisma.font.findUnique({ where: { name: 'Brandon Grotesque' }, include: { sources: true } });
+    expect(font).not.toBeNull();
+    expect(font?.sources).toHaveLength(0);
+  });
+
+  it('reuses an existing Font row case-insensitively rather than violating the unique name constraint', async () => {
+    await prisma.font.create({ data: { name: 'Brandon Grotesque', matchKeys: ['brandon grotesque'] } });
+
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'brandon grotesque')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerAToken = await signupUser('confirmer-a@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerAToken}`);
+    const confirmerBToken = await signupUser('confirmer-b@example.com');
+    const finalRes = await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerBToken}`);
+
+    expect(finalRes.body.status).toBe('promoted');
+    const fonts = await prisma.font.findMany({ where: { name: { equals: 'brandon grotesque', mode: 'insensitive' } } });
+    expect(fonts).toHaveLength(1);
   });
 
   it('resubmitting your own pending font name is a no-op, not a self-confirmation', async () => {
@@ -271,6 +358,41 @@ describe('POST /font-submissions/:id/confirm', () => {
 
     expect(secondConfirmRes.status).toBe(200);
     expect(secondConfirmRes.body.confirmationCount).toBe(2);
+  });
+
+  it('accepts an optional sourceUrl body and stores it on the confirmation', async () => {
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'Brandon Grotesque')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerToken = await signupUser('confirmer@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerToken}`)
+      .send({ sourceUrl: 'https://fonts.adobe.com/fonts/brandon-grotesque' });
+
+    const confirmation = await prisma.fontSubmissionConfirmation.findFirst({
+      where: { submissionId: firstRes.body.submissionId },
+    });
+    expect(confirmation?.sourceUrl).toBe('https://fonts.adobe.com/fonts/brandon-grotesque');
+  });
+
+  it('rejects an invalid sourceUrl in the confirm body instead of crashing', async () => {
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'Brandon Grotesque')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerToken = await signupUser('confirmer@example.com');
+    const res = await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerToken}`)
+      .send({ sourceUrl: 'not-a-url' });
+
+    expect(res.status).toBe(400);
   });
 
   it('returns 404 for a submission that does not exist', async () => {

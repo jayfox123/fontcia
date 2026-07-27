@@ -19,16 +19,60 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX
 // MARGIN_THRESHOLD in font-matches.ts).
 const CONFIRMATION_THRESHOLD = 3;
 
+function hostnameOf(url: string): string {
+  return new URL(url).hostname;
+}
+
 async function checkAndPromote(submissionId: string): Promise<void> {
   const submission = await prisma.fontSubmission.findUnique({
     where: { id: submissionId },
-    include: { _count: { select: { confirmations: true } } },
+    include: { confirmations: true },
   });
   if (!submission || submission.status !== 'pending') return;
-  const supporterCount = 1 + submission._count.confirmations;
-  if (supporterCount >= CONFIRMATION_THRESHOLD) {
-    await prisma.fontSubmission.update({ where: { id: submissionId }, data: { status: 'promoted' } });
+  const supporterCount = 1 + submission.confirmations.length;
+  if (supporterCount < CONFIRMATION_THRESHOLD) return;
+
+  // Each distinct proposed URL becomes its own ranked source, with votes equal
+  // to how many distinct people proposed exactly that URL — the submission's
+  // own sourceUrl (attributed to the original submitter) and each
+  // confirmation's sourceUrl (attributed to that confirmer) are tracked
+  // independently and never merged onto each other's row, so a URL can never
+  // be double-counted as coming from two people when only one actually
+  // proposed it.
+  const proposals = new Map<string, Set<string>>();
+  function addProposal(url: string | null, proposerId: string): void {
+    if (!url) return;
+    const proposers = proposals.get(url) ?? new Set<string>();
+    proposers.add(proposerId);
+    proposals.set(url, proposers);
   }
+  addProposal(submission.sourceUrl, submission.submittedBy);
+  for (const confirmation of submission.confirmations) {
+    addProposal(confirmation.sourceUrl, confirmation.confirmedBy);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    let font = await tx.font.findFirst({
+      where: { name: { equals: submission.fontName, mode: 'insensitive' } },
+    });
+    if (!font) {
+      font = await tx.font.create({
+        data: { name: submission.fontName, matchKeys: [submission.fontName.toLowerCase()] },
+      });
+    }
+
+    const existingSources = await tx.fontSource.findMany({ where: { fontId: font.id } });
+    const existingUrls = new Set(existingSources.map((s) => s.url));
+
+    for (const [url, proposers] of proposals) {
+      if (existingUrls.has(url)) continue;
+      await tx.fontSource.create({
+        data: { fontId: font.id, url, label: hostnameOf(url), votes: proposers.size },
+      });
+    }
+
+    await tx.fontSubmission.update({ where: { id: submissionId }, data: { status: 'promoted' } });
+  });
 }
 
 fontSubmissionsRouter.get('/pending', async (_req, res, next) => {
@@ -87,13 +131,9 @@ fontSubmissionsRouter.post('/', upload.single('image'), async (req, res, next) =
 
       await prisma.fontSubmissionConfirmation.upsert({
         where: { submissionId_confirmedBy: { submissionId: existing.id, confirmedBy: userId } },
-        create: { submissionId: existing.id, confirmedBy: userId },
-        update: {},
+        create: { submissionId: existing.id, confirmedBy: userId, sourceUrl: validSourceUrl },
+        update: validSourceUrl !== null ? { sourceUrl: validSourceUrl } : {},
       });
-
-      if (existing.sourceUrl === null && validSourceUrl !== null) {
-        await prisma.fontSubmission.update({ where: { id: existing.id }, data: { sourceUrl: validSourceUrl } });
-      }
 
       await checkAndPromote(existing.id);
 
@@ -130,10 +170,23 @@ fontSubmissionsRouter.post('/:id/confirm', async (req, res, next) => {
       throw new ApiError(400, 'You cannot confirm your own submission');
     }
 
+    const { sourceUrl } = req.body as { sourceUrl?: unknown };
+    if (sourceUrl !== undefined && sourceUrl !== null && sourceUrl !== '') {
+      if (typeof sourceUrl !== 'string') {
+        throw new ApiError(400, 'sourceUrl must be a string');
+      }
+      try {
+        new URL(sourceUrl);
+      } catch {
+        throw new ApiError(400, 'sourceUrl must be a valid URL');
+      }
+    }
+    const validSourceUrl = typeof sourceUrl === 'string' && sourceUrl !== '' ? sourceUrl : null;
+
     await prisma.fontSubmissionConfirmation.upsert({
       where: { submissionId_confirmedBy: { submissionId: submission.id, confirmedBy: userId } },
-      create: { submissionId: submission.id, confirmedBy: userId },
-      update: {},
+      create: { submissionId: submission.id, confirmedBy: userId, sourceUrl: validSourceUrl },
+      update: validSourceUrl !== null ? { sourceUrl: validSourceUrl } : {},
     });
 
     await checkAndPromote(submission.id);
