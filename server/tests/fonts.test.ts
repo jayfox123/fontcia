@@ -49,6 +49,16 @@ describe('GET /fonts/resolve', () => {
     expect(res.body.fontName).toBe('Brandon Grotesque');
   });
 
+  it('prefers the first-listed candidate over a later one when both match different fonts', async () => {
+    await prisma.font.create({ data: { name: 'Alias One Font', matchKeys: ['aliasone'] } });
+    await prisma.font.create({ data: { name: 'Alias Two Font', matchKeys: ['aliastwo'] } });
+
+    const res = await request(app).get('/fonts/resolve').query({ name: 'AliasOne, AliasTwo' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.fontName).toBe('Alias One Font');
+  });
+
   it('returns sources sorted by votes descending', async () => {
     await prisma.font.create({
       data: {

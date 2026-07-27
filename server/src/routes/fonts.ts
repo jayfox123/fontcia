@@ -5,10 +5,14 @@ import { ApiError } from '../middleware/error-handler';
 
 export const fontsRouter = Router();
 
-// Mirrors findKnownFont's client-side candidate extraction exactly (comma-split,
-// trim, strip surrounding quotes, lowercase) so the server fallback behaves
+// Mirrors findKnownFont's client-side candidate extraction (comma-split, trim,
+// strip surrounding quotes, lowercase) so the server fallback behaves
 // identically to the local tier it's backing up, regardless of which one
-// actually resolves a given font-family stack.
+// actually resolves a given font-family stack. Deliberate deviation: this
+// also drops empty candidates (e.g. from a trailing comma), which
+// findKnownFont doesn't bother with client-side — harmless there since an
+// empty string never matches a matchKey, but here it also skips a wasted
+// findFirst query.
 function extractCandidates(fontFamilyStack: string): string[] {
   return fontFamilyStack
     .split(',')
@@ -39,7 +43,7 @@ fontsRouter.get('/resolve', optionalAuth, async (req, res, next) => {
       }
     }
 
-    res.status(404).json({ error: 'Font not found' });
+    throw new ApiError(404, 'Font not found');
   } catch (error) {
     next(error);
   }
