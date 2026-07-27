@@ -9,6 +9,7 @@ export type ApiMessage =
   | { type: 'DELETE_SAVED_FONT'; id: string }
   | { type: 'LOG_SCAN'; status: 'match' | 'no-match'; fontName?: string; confidence?: number }
   | { type: 'GET_PENDING_SUBMISSIONS' }
-  | { type: 'CONFIRM_FONT_SUBMISSION'; id: string };
+  | { type: 'CONFIRM_FONT_SUBMISSION'; id: string; sourceUrl: string | null }
+  | { type: 'RESOLVE_FONT_NAME'; fontFamilyStack: string };
 
 export type ApiResponse<T> = { ok: true; data: T } | { ok: false; error: string };
