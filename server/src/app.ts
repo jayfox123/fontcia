@@ -6,6 +6,7 @@ import { savedFontsRouter } from './routes/saved-fonts';
 import { scansRouter } from './routes/scans';
 import { fontMatchesRouter } from './routes/font-matches';
 import { fontSubmissionsRouter } from './routes/font-submissions';
+import { fontsRouter } from './routes/fonts';
 
 export const app = express();
 
@@ -21,5 +22,6 @@ app.use('/saved-fonts', savedFontsRouter);
 app.use('/scans', scansRouter);
 app.use('/font-matches', fontMatchesRouter);
 app.use('/font-submissions', fontSubmissionsRouter);
+app.use('/fonts', fontsRouter);
 
 app.use(errorHandler);
