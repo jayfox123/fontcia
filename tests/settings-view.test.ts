@@ -51,6 +51,30 @@ describe('renderSettingsView', () => {
     expect(lightBtn.className).toContain('fontcia-btn-primary');
   });
 
+  it('still calls onThemeChange when isStale becomes true while setStoredTheme is in flight, but skips the local re-render', async () => {
+    const onThemeChange = vi.fn();
+    const container = document.createElement('div');
+    let stale = false;
+    await renderSettingsView(container, () => stale, onThemeChange);
+
+    const lightBtn = Array.from(container.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Light theme',
+    ) as HTMLButtonElement;
+    const lightClassBeforeClick = lightBtn.className;
+
+    // Simulate the container going stale (e.g. the user switched tabs) during the
+    // genuine async IPC window between clicking and setStoredTheme resolving.
+    stale = true;
+    lightBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onThemeChange).toHaveBeenCalledWith('light');
+    const stored = await chromeMock.storage.local.get(THEME_STORAGE_KEY);
+    expect(stored[THEME_STORAGE_KEY]).toBe('light');
+    expect(lightBtn.className).toBe(lightClassBeforeClick);
+  });
+
   it('shows the logged-in email', async () => {
     const container = document.createElement('div');
     await renderSettingsView(container, () => false, vi.fn());

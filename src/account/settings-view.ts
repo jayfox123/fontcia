@@ -40,8 +40,11 @@ export async function renderSettingsView(
   function handleThemeClick(theme: Theme): void {
     setStoredTheme(theme)
       .then(() => {
-        if (isStale()) return;
+        // onThemeChange applies a page-wide effect (the account page's own <html> class) that
+        // must run regardless of whether this container is still the active view — only the
+        // local re-render below needs to be gated on staleness.
         onThemeChange(theme);
+        if (isStale()) return;
         renderThemeButtons(theme);
       })
       .catch((error: unknown) => console.error('fontCIA: failed to save theme preference', error));
@@ -64,6 +67,5 @@ export async function renderSettingsView(
   } catch (error: unknown) {
     if (isStale()) return;
     console.error('fontCIA: failed to check auth state', error);
-    emailLine.textContent = '';
   }
 }
