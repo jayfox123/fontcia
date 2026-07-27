@@ -421,13 +421,14 @@ export function renderLockedSelection(
         });
         if (disposed) return;
         if (res.ok) {
-          const confidence = detectedConfidence ?? 0;
-          sendApiMessage<null>({ type: 'LOG_SCAN', status: 'match', fontName: res.data.fontName, confidence }).catch(
-            (error: unknown) => {
-              console.error('fontCIA: scan logging failed', error);
-            },
-          );
-          showResult({ status: 'match', fontName: res.data.fontName, confidence, sources: res.data.sources });
+          const matchResult: MatchResult = {
+            status: 'match',
+            fontName: res.data.fontName,
+            confidence: detectedConfidence ?? 0,
+            sources: res.data.sources,
+          };
+          logScanResult(matchResult);
+          showResult(matchResult);
           return;
         }
       } catch (error: unknown) {
