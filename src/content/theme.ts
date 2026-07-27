@@ -1,26 +1,13 @@
-export const themeCss = `
-.fontcia-surface {
-  --fontcia-bg: #14171A;
-  --fontcia-surface: #1F242B;
-  --fontcia-text: #E8E6E1;
-  --fontcia-accent: #FF6A3D;
-  --fontcia-success: #3FA796;
-  --fontcia-border: #2A2F36;
+import { DARK_THEME_VARS, LIGHT_THEME_VARS } from '../shared/theme-colors';
 
+export const themeCss = `
+.fontcia-surface {${DARK_THEME_VARS}
   position: fixed;
   inset: 0;
   cursor: crosshair;
 }
 
-/* Light tokens are wired now so a future toggle is a class swap, not a restyle. Not applied anywhere yet. */
-.fontcia-surface.theme-light {
-  --fontcia-bg: #FFFFFF;
-  --fontcia-surface: #F4F4F5;
-  --fontcia-text: #18181B;
-  --fontcia-accent: #FF6A3D;
-  --fontcia-success: #16A34A;
-  --fontcia-border: #E5E5E7;
-}
+.fontcia-surface.theme-light {${LIGHT_THEME_VARS}}
 
 .fontcia-draft-box,
 .fontcia-box {
