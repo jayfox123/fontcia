@@ -14,7 +14,7 @@
   "host_permissions": ["http://localhost:3001/*"],
   "web_accessible_resources": [
     {
-      "resources": ["login/login.html"],
+      "resources": ["account/account.html"],
       "matches": ["<all_urls>"]
     }
   ]
