@@ -1,5 +1,5 @@
 import type { Rect } from '../shared/selection-box';
-import type { MatchResult, ScanResult, ImageMatchResult } from './scan-types';
+import type { MatchResult, ScanResult, ImageMatchResult, ScanSource } from './scan-types';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
 import type { CaptureSelectionMessage, CaptureResponse } from '../shared/capture-messages';
 import type { MatchImageMessage, MatchImageResponse, RankedMatch } from '../shared/match-messages';
@@ -389,7 +389,7 @@ export function renderLockedSelection(
         } else if (result.status === 'no-match' && result.reason === 'no-text') {
           handleNoTextResult();
         } else if (result.status === 'no-match' && result.reason === 'unrecognized') {
-          void renderUnrecognizedFont();
+          void handleUnrecognized(result.detectedFontFamily, result.detectedConfidence);
         } else {
           renderNoMatchState(body, onRestart);
         }
@@ -400,6 +400,42 @@ export function renderLockedSelection(
         console.error('fontCIA: font resolution failed', error);
         renderNoMatchState(body, onRestart);
       });
+  }
+
+  // Mirrors handleNoTextResult's role for the 'no-text' reason: local
+  // resolution came up empty, so try exactly one more, slower tier before
+  // giving up. Unlike handleNoTextResult, this doesn't render a distinct
+  // loading state — the generic spinner renderLoadingState already put on
+  // screen at the top of handleScan simply stays up through this lookup,
+  // since it's a quick DB query, not the AI path's meaningfully slower image
+  // analysis.
+  async function handleUnrecognized(
+    detectedFontFamily: string | undefined,
+    detectedConfidence: number | undefined,
+  ): Promise<void> {
+    if (detectedFontFamily !== undefined) {
+      try {
+        const res = await sendApiMessage<{ fontName: string; sources: ScanSource[] }>({
+          type: 'RESOLVE_FONT_NAME',
+          fontFamilyStack: detectedFontFamily,
+        });
+        if (disposed) return;
+        if (res.ok) {
+          const confidence = detectedConfidence ?? 0;
+          sendApiMessage<null>({ type: 'LOG_SCAN', status: 'match', fontName: res.data.fontName, confidence }).catch(
+            (error: unknown) => {
+              console.error('fontCIA: scan logging failed', error);
+            },
+          );
+          showResult({ status: 'match', fontName: res.data.fontName, confidence, sources: res.data.sources });
+          return;
+        }
+      } catch (error: unknown) {
+        console.error('fontCIA: font-name resolution failed', error);
+      }
+    }
+    if (disposed) return;
+    void renderUnrecognizedFont();
   }
 
   async function renderUnrecognizedFont(): Promise<void> {

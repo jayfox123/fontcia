@@ -989,6 +989,184 @@ describe('renderLockedSelection', () => {
     expect(nameItBtn.disabled).toBe(true);
   });
 
+  it('tries the server-side name resolution fallback when a detectedFontFamily is present, and shows a match on success', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({
+        status: 'no-match',
+        reason: 'unrecognized',
+        detectedFontFamily: 'Brandon Grotesque, sans-serif',
+        detectedConfidence: 92,
+      }),
+    );
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'RESOLVE_FONT_NAME') {
+        return {
+          ok: true,
+          data: {
+            fontName: 'Brandon Grotesque',
+            sources: [{ url: 'https://fonts.adobe.com/fonts/brandon-grotesque', label: 'fonts.adobe.com', votes: 2 }],
+          },
+        };
+      }
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'RESOLVE_FONT_NAME',
+      fontFamilyStack: 'Brandon Grotesque, sans-serif',
+    });
+    expect(panel.querySelector('.fontcia-result-font')?.textContent).toBe('Brandon Grotesque');
+    expect(panel.querySelector('.fontcia-confidence')?.textContent).toBe('92% confidence');
+  });
+
+  it('logs the fallback match with LOG_SCAN, in addition to the initial no-match log', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({
+        status: 'no-match',
+        reason: 'unrecognized',
+        detectedFontFamily: 'Brandon Grotesque',
+        detectedConfidence: 92,
+      }),
+    );
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'RESOLVE_FONT_NAME') {
+        return { ok: true, data: { fontName: 'Brandon Grotesque', sources: [] } };
+      }
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'LOG_SCAN', status: 'no-match' });
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'LOG_SCAN',
+      status: 'match',
+      fontName: 'Brandon Grotesque',
+      confidence: 92,
+    });
+  });
+
+  it('falls through to the enrollment-capable unrecognized state when the fallback finds nothing', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({
+        status: 'no-match',
+        reason: 'unrecognized',
+        detectedFontFamily: 'SomeUnknownFont',
+        detectedConfidence: 100,
+      }),
+    );
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'RESOLVE_FONT_NAME') return { ok: false, error: 'Font not found' };
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("We don't recognize this one.");
+    const nameItBtn = Array.from(panel.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Name it',
+    ) as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(false);
+  });
+
+  it('falls through to the unrecognized state when the fallback message itself rejects', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() =>
+      Promise.resolve<ScanResult>({
+        status: 'no-match',
+        reason: 'unrecognized',
+        detectedFontFamily: 'SomeUnknownFont',
+        detectedConfidence: 100,
+      }),
+    );
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'RESOLVE_FONT_NAME') throw new Error('network error');
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("We don't recognize this one.");
+  });
+
+  it('does not attempt the fallback for a mixed reason', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'mixed' }));
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'RESOLVE_FONT_NAME' }),
+    );
+  });
+
   it('starts enrollment via a fresh CAPTURE_SELECTION when Name it is clicked from the unrecognized state', async () => {
     const container = document.createElement('div');
     const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'unrecognized' }));
