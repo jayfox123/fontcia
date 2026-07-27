@@ -10,6 +10,8 @@ export type ApiMessage =
   | { type: 'LOG_SCAN'; status: 'match' | 'no-match'; fontName?: string; confidence?: number }
   | { type: 'GET_PENDING_SUBMISSIONS' }
   | { type: 'CONFIRM_FONT_SUBMISSION'; id: string; sourceUrl: string | null }
-  | { type: 'RESOLVE_FONT_NAME'; fontFamilyStack: string };
+  | { type: 'RESOLVE_FONT_NAME'; fontFamilyStack: string }
+  | { type: 'GET_SAVED_FONTS' }
+  | { type: 'GET_SCANS' };
 
 export type ApiResponse<T> = { ok: true; data: T } | { ok: false; error: string };
