@@ -162,7 +162,7 @@ describe('renderLockedSelection', () => {
 
     (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
 
-    expect(windowOpenSpy).toHaveBeenCalledWith('chrome-extension://fake-extension-id/login/login.html', '_blank');
+    expect(windowOpenSpy).toHaveBeenCalledWith('chrome-extension://fake-extension-id/account/account.html', '_blank');
 
     windowOpenSpy.mockRestore();
   });

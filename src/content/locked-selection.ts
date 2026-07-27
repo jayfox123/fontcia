@@ -110,7 +110,7 @@ export function renderLockedSelection(
   let candidateTogglePending: boolean[] = [];
 
   function handleLoginPrompt(): void {
-    window.open(chrome.runtime.getURL('login/login.html'), '_blank');
+    window.open(chrome.runtime.getURL('account/account.html'), '_blank');
   }
 
   async function renderResult(): Promise<void> {
