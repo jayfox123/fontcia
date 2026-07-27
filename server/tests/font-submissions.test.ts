@@ -215,6 +215,37 @@ describe('POST /font-submissions', () => {
     expect(fonts).toHaveLength(1);
   });
 
+  it('backfills matchKeys on a reused pre-existing Font row so it becomes resolvable after promotion', async () => {
+    // Simulates a Font row seeded by the AI-catalog build script (server/scripts/build-reference-set.ts),
+    // which never sets matchKeys, leaving it at the schema default of [].
+    await prisma.font.create({ data: { name: 'Playfair Display', googleSlug: 'Playfair+Display' } });
+
+    const firstRes = await request(app)
+      .post('/font-submissions')
+      .set('Authorization', `Bearer ${submitterToken}`)
+      .field('fontName', 'playfair display')
+      .attach('image', Buffer.from('fake-image'), 'sample.png');
+
+    const confirmerAToken = await signupUser('confirmer-a@example.com');
+    await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerAToken}`);
+    const confirmerBToken = await signupUser('confirmer-b@example.com');
+    const finalRes = await request(app)
+      .post(`/font-submissions/${firstRes.body.submissionId}/confirm`)
+      .set('Authorization', `Bearer ${confirmerBToken}`);
+
+    expect(finalRes.body.status).toBe('promoted');
+
+    const fonts = await prisma.font.findMany({ where: { name: { equals: 'playfair display', mode: 'insensitive' } } });
+    expect(fonts).toHaveLength(1);
+    expect(fonts[0].matchKeys).toEqual(['playfair display']);
+
+    const resolveRes = await request(app).get('/fonts/resolve').query({ name: 'Playfair Display' });
+    expect(resolveRes.status).toBe(200);
+    expect(resolveRes.body.fontName).toBe('Playfair Display');
+  });
+
   it('resubmitting your own pending font name is a no-op, not a self-confirmation', async () => {
     const firstRes = await request(app)
       .post('/font-submissions')

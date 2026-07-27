@@ -52,12 +52,21 @@ async function checkAndPromote(submissionId: string): Promise<void> {
   }
 
   await prisma.$transaction(async (tx) => {
+    const normalizedName = submission.fontName.toLowerCase();
     let font = await tx.font.findFirst({
       where: { name: { equals: submission.fontName, mode: 'insensitive' } },
     });
     if (!font) {
       font = await tx.font.create({
-        data: { name: submission.fontName, matchKeys: [submission.fontName.toLowerCase()] },
+        data: { name: submission.fontName, matchKeys: [normalizedName] },
+      });
+    } else if (!font.matchKeys.includes(normalizedName)) {
+      // Reusing a pre-existing Font row (e.g. one seeded by the AI-catalog build
+      // script, which never populates matchKeys) must not leave it permanently
+      // unresolvable via GET /fonts/resolve, which matches only on matchKeys.
+      font = await tx.font.update({
+        where: { id: font.id },
+        data: { matchKeys: { push: normalizedName } },
       });
     }
 
