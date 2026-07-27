@@ -53,9 +53,11 @@ model RefreshToken {
 model Font {
   id         String          @id @default(uuid())
   name       String          @unique
-  googleSlug String
+  googleSlug String?
   category   String?
+  matchKeys  String[]        @default([])
   embeddings FontEmbedding[]
+  sources    FontSource[]
 }
 
 model FontEmbedding {
@@ -87,7 +89,18 @@ model FontSubmissionConfirmation {
   submission   FontSubmission @relation(fields: [submissionId], references: [id])
   confirmedBy  String
   confirmer    User           @relation(fields: [confirmedBy], references: [id])
+  sourceUrl    String?
   createdAt    DateTime       @default(now())
 
   @@unique([submissionId, confirmedBy])
+}
+
+model FontSource {
+  id        String   @id @default(uuid())
+  fontId    String
+  font      Font     @relation(fields: [fontId], references: [id])
+  url       String
+  label     String
+  votes     Int      @default(1)
+  createdAt DateTime @default(now())
 }
