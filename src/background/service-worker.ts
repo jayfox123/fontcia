@@ -12,6 +12,8 @@ import {
   confirmFontSubmission,
   submitFont,
   resolveFontName,
+  getSavedFonts,
+  getScans,
 } from './api-client';
 import { captureAndCropSelection } from './image-capture';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
@@ -114,6 +116,10 @@ export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse
         return await confirmFontSubmission(message.id, message.sourceUrl);
       case 'RESOLVE_FONT_NAME':
         return await resolveFontName(message.fontFamilyStack);
+      case 'GET_SAVED_FONTS':
+        return await getSavedFonts();
+      case 'GET_SCANS':
+        return await getScans();
       default:
         return { ok: false, error: 'Unknown message type' };
     }

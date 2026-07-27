@@ -330,6 +330,70 @@ describe('handleApiMessage', () => {
     expect(result).toEqual({ ok: true, data: { fontName: 'Brandon Grotesque', sources: [] } });
   });
 
+  it('dispatches GET_SAVED_FONTS to the api-client getSavedFonts function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(),
+      resolveFontName: vi.fn(),
+      getSavedFonts: vi.fn(async () => ({
+        ok: true,
+        data: [{ id: 'font-1', fontName: 'Inter', confidence: 92, sources: [], savedAt: '2026-01-01T00:00:00.000Z' }],
+      })),
+      getScans: vi.fn(),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { getSavedFonts } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'GET_SAVED_FONTS' });
+
+    expect(getSavedFonts).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      ok: true,
+      data: [{ id: 'font-1', fontName: 'Inter', confidence: 92, sources: [], savedAt: '2026-01-01T00:00:00.000Z' }],
+    });
+  });
+
+  it('dispatches GET_SCANS to the api-client getScans function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(),
+      resolveFontName: vi.fn(),
+      getSavedFonts: vi.fn(),
+      getScans: vi.fn(async () => ({
+        ok: true,
+        data: [{ id: 'scan-1', status: 'match', fontName: 'Inter', confidence: 92, createdAt: '2026-01-01T00:00:00.000Z' }],
+      })),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { getScans } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({ type: 'GET_SCANS' });
+
+    expect(getScans).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      ok: true,
+      data: [{ id: 'scan-1', status: 'match', fontName: 'Inter', confidence: 92, createdAt: '2026-01-01T00:00:00.000Z' }],
+    });
+  });
+
   it('returns an error response for an unrecognized message type', async () => {
     vi.doMock('../src/background/api-client', () => ({
       signup: vi.fn(),
