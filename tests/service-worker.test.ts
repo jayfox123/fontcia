@@ -275,7 +275,7 @@ describe('handleApiMessage', () => {
     expect(result).toEqual({ ok: true, data: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }] });
   });
 
-  it('dispatches CONFIRM_FONT_SUBMISSION to the api-client confirmFontSubmission function', async () => {
+  it('dispatches CONFIRM_FONT_SUBMISSION to the api-client confirmFontSubmission function, including the proposed sourceUrl', async () => {
     vi.doMock('../src/background/api-client', () => ({
       signup: vi.fn(),
       login: vi.fn(),
@@ -288,14 +288,46 @@ describe('handleApiMessage', () => {
       getPendingSubmissions: vi.fn(),
       confirmFontSubmission: vi.fn(async () => ({ ok: true, data: { status: 'pending', confirmationCount: 2 } })),
       submitFont: vi.fn(),
+      resolveFontName: vi.fn(),
     }));
     const { handleApiMessage } = await import('../src/background/service-worker');
     const { confirmFontSubmission } = await import('../src/background/api-client');
 
-    const result = await handleApiMessage({ type: 'CONFIRM_FONT_SUBMISSION', id: 'sub-1' });
+    const result = await handleApiMessage({
+      type: 'CONFIRM_FONT_SUBMISSION',
+      id: 'sub-1',
+      sourceUrl: 'https://fonts.adobe.com/fonts/brandon-grotesque',
+    });
 
-    expect(confirmFontSubmission).toHaveBeenCalledWith('sub-1');
+    expect(confirmFontSubmission).toHaveBeenCalledWith('sub-1', 'https://fonts.adobe.com/fonts/brandon-grotesque');
     expect(result).toEqual({ ok: true, data: { status: 'pending', confirmationCount: 2 } });
+  });
+
+  it('dispatches RESOLVE_FONT_NAME to the api-client resolveFontName function', async () => {
+    vi.doMock('../src/background/api-client', () => ({
+      signup: vi.fn(),
+      login: vi.fn(),
+      logout: vi.fn(),
+      getAuthState: vi.fn(),
+      saveFont: vi.fn(),
+      deleteSavedFont: vi.fn(),
+      logScan: vi.fn(),
+      matchImage: vi.fn(),
+      getPendingSubmissions: vi.fn(),
+      confirmFontSubmission: vi.fn(),
+      submitFont: vi.fn(),
+      resolveFontName: vi.fn(async () => ({ ok: true, data: { fontName: 'Brandon Grotesque', sources: [] } })),
+    }));
+    const { handleApiMessage } = await import('../src/background/service-worker');
+    const { resolveFontName } = await import('../src/background/api-client');
+
+    const result = await handleApiMessage({
+      type: 'RESOLVE_FONT_NAME',
+      fontFamilyStack: 'Brandon Grotesque, sans-serif',
+    });
+
+    expect(resolveFontName).toHaveBeenCalledWith('Brandon Grotesque, sans-serif');
+    expect(result).toEqual({ ok: true, data: { fontName: 'Brandon Grotesque', sources: [] } });
   });
 
   it('returns an error response for an unrecognized message type', async () => {

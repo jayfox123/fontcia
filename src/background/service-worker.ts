@@ -11,6 +11,7 @@ import {
   getPendingSubmissions,
   confirmFontSubmission,
   submitFont,
+  resolveFontName,
 } from './api-client';
 import { captureAndCropSelection } from './image-capture';
 import type { ApiMessage, ApiResponse } from '../shared/api-messages';
@@ -110,7 +111,9 @@ export async function handleApiMessage(message: ApiMessage): Promise<ApiResponse
       case 'GET_PENDING_SUBMISSIONS':
         return await getPendingSubmissions();
       case 'CONFIRM_FONT_SUBMISSION':
-        return await confirmFontSubmission(message.id);
+        return await confirmFontSubmission(message.id, message.sourceUrl);
+      case 'RESOLVE_FONT_NAME':
+        return await resolveFontName(message.fontFamilyStack);
       default:
         return { ok: false, error: 'Unknown message type' };
     }
