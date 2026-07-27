@@ -124,4 +124,31 @@ describe('renderSavedFontsView', () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it('does not update the DOM if isStale reports true after the saved fonts fetch', async () => {
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      if (message.type === 'GET_SAVED_FONTS') {
+        return {
+          ok: true,
+          data: [{ id: 'font-1', fontName: 'Inter', confidence: 92, sources: [], savedAt: '2026-01-01T00:00:00.000Z' }],
+        };
+      }
+      return { ok: true, data: null };
+    });
+    // Reports fresh through the auth-state checkpoint, then stale by the time the
+    // saved-fonts fetch resolves — isolates the second isStale() guard specifically,
+    // since a plain `() => true` would already bail out at the first checkpoint.
+    let callCount = 0;
+    const isStale = () => {
+      callCount += 1;
+      return callCount > 1;
+    };
+
+    const container = document.createElement('div');
+    await renderSavedFontsView(container, isStale, vi.fn());
+
+    expect(container.querySelector('.fontcia-list-row')).toBeNull();
+    expect(container.textContent).not.toContain('Inter');
+  });
 });
