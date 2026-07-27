@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { armSelectionMode, dismissSelection } from '../src/content/overlay';
 import { isSelectionActive, markSelectionActive } from '../src/shared/session-state';
+import { moduleLoadChromeMock } from './setup';
+import { THEME_STORAGE_KEY } from '../src/shared/theme-storage';
 
 afterEach(() => {
   dismissSelection();
@@ -172,5 +174,69 @@ describe('drag lifecycle', () => {
 
     expect(surface.querySelectorAll('.fontcia-box').length).toBe(1);
     expect(surface.querySelectorAll('.fontcia-panel').length).toBe(1);
+  });
+});
+
+describe('theme application', () => {
+  afterEach(async () => {
+    await moduleLoadChromeMock.storage.local.remove(THEME_STORAGE_KEY);
+  });
+
+  it('applies no theme-light class when nothing is stored (defaults to dark)', async () => {
+    armSelectionMode(1);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const surface = document
+      .querySelector('#fontcia-overlay-host')
+      ?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+    expect(surface.classList.contains('theme-light')).toBe(false);
+  });
+
+  it('applies the theme-light class when light is stored', async () => {
+    await moduleLoadChromeMock.storage.local.set({ [THEME_STORAGE_KEY]: 'light' });
+
+    armSelectionMode(1);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const surface = document
+      .querySelector('#fontcia-overlay-host')
+      ?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+    expect(surface.classList.contains('theme-light')).toBe(true);
+  });
+
+  it('live-updates an already-open panel when the theme changes via storage.onChanged', async () => {
+    armSelectionMode(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    const surface = document
+      .querySelector('#fontcia-overlay-host')
+      ?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+    expect(surface.classList.contains('theme-light')).toBe(false);
+
+    await moduleLoadChromeMock.storage.local.set({ [THEME_STORAGE_KEY]: 'light' });
+    const changeListener = moduleLoadChromeMock.storage.onChanged.addListener.mock.calls[0][0];
+    changeListener({ [THEME_STORAGE_KEY]: { newValue: 'light' } }, 'local');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(surface.classList.contains('theme-light')).toBe(true);
+  });
+
+  it('does not react to an unrelated storage key changing', async () => {
+    armSelectionMode(1);
+    await Promise.resolve();
+    await Promise.resolve();
+    const surface = document
+      .querySelector('#fontcia-overlay-host')
+      ?.shadowRoot?.querySelector('.fontcia-surface') as HTMLElement;
+
+    const changeListener = moduleLoadChromeMock.storage.onChanged.addListener.mock.calls[0][0];
+    changeListener({ 'fontcia-auth': { newValue: {} } }, 'local');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(surface.classList.contains('theme-light')).toBe(false);
   });
 });

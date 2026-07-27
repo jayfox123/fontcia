@@ -2,6 +2,7 @@ import { clearSelectionActive, markSelectionActive } from '../shared/session-sta
 import { normalizeDragRect, isNoOpDrag, type Point } from '../shared/selection-box';
 import { renderLockedSelection } from './locked-selection';
 import { themeCss } from './theme';
+import { getStoredTheme, THEME_STORAGE_KEY } from '../shared/theme-storage';
 
 declare global {
   interface Window {
@@ -72,6 +73,18 @@ function handleMouseUp(event: MouseEvent): void {
   }
 }
 
+// A separate, fire-and-forget async step rather than making createOverlay itself
+// async: the crosshair cursor and drag handling must be available immediately with
+// no user-visible delay, and neither depends on which theme is applied — only the
+// colors do. This one extra chrome.storage.local round trip resolves well before a
+// real user finishes their drag gesture.
+async function applyStoredTheme(): Promise<void> {
+  if (!shadowSurface) return;
+  const theme = await getStoredTheme();
+  if (!shadowSurface) return; // could have been torn down while this awaited
+  shadowSurface.classList.toggle('theme-light', theme === 'light');
+}
+
 function createOverlay(): void {
   if (hostEl !== null) {
     teardownOverlay();
@@ -95,6 +108,7 @@ function createOverlay(): void {
   // keeps the crosshair guaranteed even if the <style> tag were ever parsed late.
   shadowSurface.style.cursor = 'crosshair';
   shadow.appendChild(shadowSurface);
+  void applyStoredTheme();
 
   shadowSurface.addEventListener('mousedown', handleMouseDown);
   shadowSurface.addEventListener('mousemove', handleMouseMove);
@@ -176,6 +190,12 @@ if (!window.__fontciaOverlayInjected) {
       armSelectionMode(message.tabId);
     } else if (message?.type === 'DISMISS_SELECTION') {
       dismissSelection();
+    }
+  });
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName === 'local' && THEME_STORAGE_KEY in changes) {
+      void applyStoredTheme();
     }
   });
 }
