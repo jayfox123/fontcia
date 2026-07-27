@@ -941,6 +941,212 @@ describe('renderLockedSelection', () => {
     expect(saveButtonsAfter[1].textContent).toBe('★ Saved'); // Roboto now saved
   });
 
+  it('shows an enabled Name it button on the DOM no-match state when the reason is unrecognized and logged in', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'unrecognized' }));
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(panel.querySelector('.fontcia-no-match-message')?.textContent).toBe("We don't recognize this one.");
+    const buttons = Array.from(panel.querySelectorAll('.fontcia-btn-secondary'));
+    const nameItBtn = buttons.find((b) => b.textContent === 'Name it') as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(false);
+  });
+
+  it('shows the bare no-match state for a mixed reason, with no working Name it button', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'mixed' }));
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const buttons = Array.from(panel.querySelectorAll('.fontcia-btn-secondary'));
+    const nameItBtn = buttons.find((b) => b.textContent === 'Name it') as HTMLButtonElement;
+    expect(nameItBtn.disabled).toBe(true);
+  });
+
+  it('starts enrollment via a fresh CAPTURE_SELECTION when Name it is clicked from the unrecognized state', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'unrecognized' }));
+    const fakeBlob = new Blob(['fake image data'], { type: 'image/png' });
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      if (message.type === 'GET_PENDING_SUBMISSIONS') return { ok: true, data: [] };
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'captured', blob: fakeBlob };
+      if (message.type === 'SUBMIT_FONT') return { status: 'ok', submissionId: 'sub-1' };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nameItBtn = Array.from(panel.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Name it',
+    ) as HTMLButtonElement;
+    nameItBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nameInput = panel.querySelector('.fontcia-input') as HTMLInputElement;
+    expect(nameInput).not.toBeNull();
+    nameInput.value = 'New Font Name';
+
+    const submitBtn = Array.from(panel.querySelectorAll('.fontcia-btn-primary')).find(
+      (b) => b.textContent === 'Submit',
+    ) as HTMLButtonElement;
+    submitBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CAPTURE_SELECTION',
+      rect: { x: 10, y: 20, width: 200, height: 30 },
+      devicePixelRatio: window.devicePixelRatio,
+    });
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'SUBMIT_FONT',
+      fontName: 'New Font Name',
+      sourceUrl: null,
+      blob: fakeBlob,
+    });
+    expect(panel.textContent).toContain('Thanks! Pending community confirmation.');
+  });
+
+  it('starts enrollment reusing the already-captured blob when Name it is clicked from no-confident-match', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));
+    const fakeBlob = new Blob(['fake image data'], { type: 'image/png' });
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'CAPTURE_SELECTION') return { status: 'captured', blob: fakeBlob };
+      if (message.type === 'MATCH_IMAGE') return { status: 'ok', matches: [] };
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      if (message.type === 'GET_PENDING_SUBMISSIONS') return { ok: true, data: [] };
+      if (message.type === 'SUBMIT_FONT') return { status: 'ok', submissionId: 'sub-1' };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      vi.fn(),
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nameItBtn = Array.from(panel.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Name it',
+    ) as HTMLButtonElement;
+    nameItBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nameInput = panel.querySelector('.fontcia-input') as HTMLInputElement;
+    nameInput.value = 'New Font Name';
+
+    const submitBtn = Array.from(panel.querySelectorAll('.fontcia-btn-primary')).find(
+      (b) => b.textContent === 'Submit',
+    ) as HTMLButtonElement;
+    submitBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Only ONE CAPTURE_SELECTION call total (the original capture that fed
+    // MATCH_IMAGE) — enrollment from this entry point must reuse that same
+    // blob, not trigger a second capture round trip.
+    const captureCalls = chromeMock.runtime.sendMessage.mock.calls.filter(
+      ([msg]) => (msg as { type: string }).type === 'CAPTURE_SELECTION',
+    );
+    expect(captureCalls).toHaveLength(1);
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'SUBMIT_FONT',
+      fontName: 'New Font Name',
+      sourceUrl: null,
+      blob: fakeBlob,
+    });
+    expect(panel.textContent).toContain('Thanks! Pending community confirmation.');
+  });
+
+  it('cancelling enrollment returns to the ready state', async () => {
+    const container = document.createElement('div');
+    const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'unrecognized' }));
+    const onRestart = vi.fn();
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_AUTH_STATE') return { ok: true, data: { loggedIn: true } };
+      if (message.type === 'GET_PENDING_SUBMISSIONS') return { ok: true, data: [] };
+      return { ok: true, data: null };
+    });
+
+    const { panel } = renderLockedSelection(
+      container,
+      { x: 10, y: 20, width: 200, height: 30 },
+      vi.fn(),
+      onRestart,
+      scanFn,
+    );
+
+    (panel.querySelector('.fontcia-btn-primary') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const nameItBtn = Array.from(panel.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Name it',
+    ) as HTMLButtonElement;
+    nameItBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const cancelBtn = Array.from(panel.querySelectorAll('.fontcia-btn-secondary')).find(
+      (b) => b.textContent === 'Cancel',
+    ) as HTMLButtonElement;
+    cancelBtn.click();
+
+    expect(onRestart).toHaveBeenCalledOnce();
+  });
+
   it('re-renders the ranked-matches Save buttons when auth state changes via storage.onChanged', async () => {
     const container = document.createElement('div');
     const scanFn = vi.fn(() => Promise.resolve<ScanResult>({ status: 'no-match', reason: 'no-text' }));

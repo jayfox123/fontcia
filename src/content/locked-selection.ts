@@ -14,7 +14,9 @@ import {
   renderRankedMatchesState,
   renderNoConfidentMatchState,
   renderMatchErrorState,
+  renderUnrecognizedFontState,
 } from './scan-dialogue';
+import { startEnrollment, captureSampleBlob } from './enrollment';
 
 export interface LockedSelectionElements {
   box: HTMLDivElement;
@@ -309,14 +311,35 @@ export function renderLockedSelection(
     });
   }
 
-  function renderImageMatchResult(result: ImageMatchResult): void {
+  function renderImageMatchResult(result: ImageMatchResult, blob: Blob): void {
     if (result.status === 'matches') {
       showCandidates(result.candidates);
     } else if (result.status === 'no-confident-match') {
-      renderNoConfidentMatchState(body, onRestart);
+      void renderNoConfidentMatch(blob);
     } else {
       renderMatchErrorState(body, onRestart);
     }
+  }
+
+  async function renderNoConfidentMatch(blob: Blob): Promise<void> {
+    let isLoggedIn = false;
+    try {
+      const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+      isLoggedIn = authRes.ok && authRes.data.loggedIn;
+    } catch (error: unknown) {
+      console.error('fontCIA: failed to check auth state', error);
+    }
+    if (disposed) return;
+    renderNoConfidentMatchState(body, isLoggedIn, () => handleNameItFromBlob(blob), handleLoginPrompt, onRestart);
+  }
+
+  function handleNameItFromBlob(blob: Blob): void {
+    void startEnrollment({
+      body,
+      isDisposed: () => disposed,
+      onCancel: onRestart,
+      getSampleBlob: async () => ({ status: 'ok', blob }),
+    });
   }
 
   function handleImageCapture(blob: Blob): void {
@@ -332,7 +355,7 @@ export function renderLockedSelection(
               : { status: 'no-confident-match' }
             : { status: 'error' };
         logImageMatchResult(result);
-        renderImageMatchResult(result);
+        renderImageMatchResult(result, blob);
       })
       .catch((error: unknown) => {
         if (disposed) return;
@@ -365,6 +388,8 @@ export function renderLockedSelection(
           showResult(result);
         } else if (result.status === 'no-match' && result.reason === 'no-text') {
           handleNoTextResult();
+        } else if (result.status === 'no-match' && result.reason === 'unrecognized') {
+          void renderUnrecognizedFont();
         } else {
           renderNoMatchState(body, onRestart);
         }
@@ -375,6 +400,27 @@ export function renderLockedSelection(
         console.error('fontCIA: font resolution failed', error);
         renderNoMatchState(body, onRestart);
       });
+  }
+
+  async function renderUnrecognizedFont(): Promise<void> {
+    let isLoggedIn = false;
+    try {
+      const authRes = await sendApiMessage<{ loggedIn: boolean }>({ type: 'GET_AUTH_STATE' });
+      isLoggedIn = authRes.ok && authRes.data.loggedIn;
+    } catch (error: unknown) {
+      console.error('fontCIA: failed to check auth state', error);
+    }
+    if (disposed) return;
+    renderUnrecognizedFontState(body, isLoggedIn, handleNameItFromDom, handleLoginPrompt, onRestart);
+  }
+
+  function handleNameItFromDom(): void {
+    void startEnrollment({
+      body,
+      isDisposed: () => disposed,
+      onCancel: onRestart,
+      getSampleBlob: () => captureSampleBlob(rect, window.devicePixelRatio),
+    });
   }
 
   renderReadyState(body, handleScan);
