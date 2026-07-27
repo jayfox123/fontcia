@@ -13,6 +13,7 @@ import {
   getPendingSubmissions,
   confirmFontSubmission,
   submitFont,
+  resolveFontName,
 } from '../src/background/api-client';
 import { getStoredAuth, setStoredAuth } from '../src/background/auth-storage';
 
@@ -350,15 +351,77 @@ describe('getPendingSubmissions', () => {
 });
 
 describe('confirmFontSubmission', () => {
-  it('posts to /font-submissions/:id/confirm', async () => {
+  it('posts to /font-submissions/:id/confirm with the proposed sourceUrl in the body', async () => {
     await setStoredAuth(STORED);
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: 'pending', confirmationCount: 2 }));
 
-    const result = await confirmFontSubmission('sub-1');
+    const result = await confirmFontSubmission('sub-1', 'https://fonts.adobe.com/fonts/brandon-grotesque');
 
     expect(result).toEqual({ ok: true, data: { status: 'pending', confirmationCount: 2 } });
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/font-submissions/sub-1/confirm');
     expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(fetchMock.mock.calls[0][1].body).toBe(
+      JSON.stringify({ sourceUrl: 'https://fonts.adobe.com/fonts/brandon-grotesque' }),
+    );
+  });
+
+  it('sends a null sourceUrl when none is proposed', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: 'pending', confirmationCount: 2 }));
+
+    await confirmFontSubmission('sub-1', null);
+
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify({ sourceUrl: null }));
+  });
+});
+
+describe('resolveFontName', () => {
+  it('fetches with the font-family stack URL-encoded and unwraps the result', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        fontName: 'Brandon Grotesque',
+        sources: [{ url: 'https://fonts.adobe.com/fonts/brandon-grotesque', label: 'fonts.adobe.com', votes: 2 }],
+      }),
+    );
+
+    const result = await resolveFontName('"Brandon Grotesque", sans-serif');
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        fontName: 'Brandon Grotesque',
+        sources: [{ url: 'https://fonts.adobe.com/fonts/brandon-grotesque', label: 'fonts.adobe.com', votes: 2 }],
+      },
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://localhost:3001/fonts/resolve?name=%22Brandon%20Grotesque%22%2C%20sans-serif',
+    );
+  });
+
+  it('returns the server error on a non-2xx response (e.g. not found)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, { error: 'Font not found' }));
+
+    const result = await resolveFontName('SomeUnknownFont');
+
+    expect(result).toEqual({ ok: false, error: 'Font not found' });
+  });
+
+  it('attaches a stored access token when present, without requiring one', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { fontName: 'Brandon Grotesque', sources: [] }));
+
+    await resolveFontName('Brandon Grotesque');
+
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer access-1');
+  });
+
+  it('works with no stored auth at all', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { fontName: 'Brandon Grotesque', sources: [] }));
+
+    const result = await resolveFontName('Brandon Grotesque');
+
+    expect(result.ok).toBe(true);
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined();
   });
 });
 

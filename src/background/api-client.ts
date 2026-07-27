@@ -248,8 +248,9 @@ export async function getPendingSubmissions(): Promise<ApiResponse<PendingSubmis
 
 export async function confirmFontSubmission(
   id: string,
+  sourceUrl: string | null,
 ): Promise<ApiResponse<{ status: string; confirmationCount: number }>> {
-  return apiFetch(`/font-submissions/${id}/confirm`, { method: 'POST', auth: 'required' });
+  return apiFetch(`/font-submissions/${id}/confirm`, { method: 'POST', body: { sourceUrl }, auth: 'required' });
 }
 
 export async function submitFont(
@@ -300,4 +301,13 @@ export async function submitFont(
 
   const errorMessage = (json as { error?: string } | null)?.error ?? `Request failed with status ${res.status}`;
   return { ok: false, error: errorMessage };
+}
+
+export interface FontResolution {
+  fontName: string;
+  sources: ScanSource[];
+}
+
+export async function resolveFontName(fontFamilyStack: string): Promise<ApiResponse<FontResolution>> {
+  return apiFetch(`/fonts/resolve?name=${encodeURIComponent(fontFamilyStack)}`, { method: 'GET', auth: 'optional' });
 }
