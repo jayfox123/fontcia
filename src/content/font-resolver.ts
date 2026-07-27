@@ -40,7 +40,12 @@ export function resolveFromReadings(readings: FontReading[]): ScanResult {
 
   const known = findKnownFont(winner!.reading.fontFamily);
   if (!known) {
-    return { status: 'no-match', reason: 'unrecognized' };
+    return {
+      status: 'no-match',
+      reason: 'unrecognized',
+      detectedFontFamily: winner!.reading.fontFamily,
+      detectedConfidence: Math.round(share * 100),
+    };
   }
 
   const result: MatchResult = {

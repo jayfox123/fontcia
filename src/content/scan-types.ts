@@ -16,6 +16,8 @@ export interface MatchResult {
 export interface NoMatchResult {
   status: 'no-match';
   reason?: 'unrecognized' | 'mixed' | 'no-text' | 'error';
+  detectedFontFamily?: string;
+  detectedConfidence?: number;
 }
 
 export type ScanResult = MatchResult | NoMatchResult;

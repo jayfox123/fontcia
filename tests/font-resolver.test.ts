@@ -37,9 +37,25 @@ describe('resolveFromReadings', () => {
     expect(result).toEqual({ status: 'no-match', reason: 'mixed' });
   });
 
-  it('returns no-match/unrecognized when the winning font is not in the known-fonts table', () => {
+  it('returns no-match/unrecognized with the detected font-family and confidence when the winning font is not in the known-fonts table', () => {
     const result = resolveFromReadings([unknown, unknown, unknown]);
-    expect(result).toEqual({ status: 'no-match', reason: 'unrecognized' });
+    expect(result).toEqual({
+      status: 'no-match',
+      reason: 'unrecognized',
+      detectedFontFamily: 'SomeUnknownFont',
+      detectedConfidence: 100,
+    });
+  });
+
+  it('carries the correct partial confidence for an unrecognized font that only reaches a partial majority', () => {
+    const otherUnknown: FontReading = { fontFamily: 'AnotherUnknownFont', fontWeight: '400', fontStyle: 'normal' };
+    // 3 of 4 = 75%, above the 60% threshold, still unrecognized
+    const result = resolveFromReadings([unknown, unknown, unknown, otherUnknown]);
+    expect(result.status).toBe('no-match');
+    if (result.status === 'no-match') {
+      expect(result.detectedFontFamily).toBe('SomeUnknownFont');
+      expect(result.detectedConfidence).toBe(75);
+    }
   });
 
   it('treats a boundary exactly at the majority threshold as passing', () => {
