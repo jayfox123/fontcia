@@ -50,8 +50,8 @@ describe('GET /fonts/resolve', () => {
   });
 
   it('prefers the first-listed candidate over a later one when both match different fonts', async () => {
-    await prisma.font.create({ data: { name: 'Alias One Font', matchKeys: ['aliasone'] } });
     await prisma.font.create({ data: { name: 'Alias Two Font', matchKeys: ['aliastwo'] } });
+    await prisma.font.create({ data: { name: 'Alias One Font', matchKeys: ['aliasone'] } });
 
     const res = await request(app).get('/fonts/resolve').query({ name: 'AliasOne, AliasTwo' });
 
