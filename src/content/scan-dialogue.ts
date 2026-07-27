@@ -347,7 +347,7 @@ export interface PendingSuggestion {
 export function renderEnrollmentFormState(
   body: HTMLElement,
   pendingSuggestions: PendingSuggestion[],
-  onConfirmExisting: (id: string) => void,
+  onConfirmExisting: (id: string, sourceUrl: string | null) => void,
   onSubmitNew: (fontName: string, sourceUrl: string | null) => void,
   onCancel: () => void,
 ): void {
@@ -374,7 +374,10 @@ export function renderEnrollmentFormState(
       suggestionBtn.className = 'fontcia-suggestion-item';
       const confirmationWord = match.confirmationCount === 1 ? 'confirmation' : 'confirmations';
       suggestionBtn.textContent = `Confirm as: ${match.fontName} (${match.confirmationCount} ${confirmationWord} so far)`;
-      suggestionBtn.addEventListener('click', () => onConfirmExisting(match.id));
+      suggestionBtn.addEventListener('click', () => {
+        const proposedSourceUrl = sourceUrlInput.value.trim();
+        onConfirmExisting(match.id, proposedSourceUrl.length > 0 ? proposedSourceUrl : null);
+      });
       suggestionsList.appendChild(suggestionBtn);
     }
   }

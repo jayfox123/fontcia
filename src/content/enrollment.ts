@@ -52,8 +52,8 @@ export async function startEnrollment(deps: EnrollmentDeps): Promise<void> {
   }
   if (isDisposed()) return;
 
-  function handleConfirmExisting(id: string): void {
-    sendApiMessage<{ status: string; confirmationCount: number }>({ type: 'CONFIRM_FONT_SUBMISSION', id })
+  function handleConfirmExisting(id: string, sourceUrl: string | null): void {
+    sendApiMessage<{ status: string; confirmationCount: number }>({ type: 'CONFIRM_FONT_SUBMISSION', id, sourceUrl })
       .then((res) => {
         if (isDisposed()) return;
         if (res.ok) {

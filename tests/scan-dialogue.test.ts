@@ -482,7 +482,7 @@ describe('renderEnrollmentFormState', () => {
     expect(items[0].textContent).toContain('1 confirmation so far');
   });
 
-  it('calls onConfirmExisting with the picked suggestion\'s id when clicked', () => {
+  it("calls onConfirmExisting with the picked suggestion's id and null when no source URL was typed", () => {
     const body = document.createElement('div');
     const onConfirmExisting = vi.fn();
 
@@ -496,7 +496,24 @@ describe('renderEnrollmentFormState', () => {
     expect(items).toHaveLength(2);
     items[1].click();
 
-    expect(onConfirmExisting).toHaveBeenCalledWith('sub-2');
+    expect(onConfirmExisting).toHaveBeenCalledWith('sub-2', null);
+  });
+
+  it('calls onConfirmExisting with whatever source URL was typed into the source-URL field', () => {
+    const body = document.createElement('div');
+    const onConfirmExisting = vi.fn();
+
+    renderEnrollmentFormState(body, suggestions, onConfirmExisting, vi.fn(), vi.fn());
+
+    const inputs = body.querySelectorAll('.fontcia-input') as NodeListOf<HTMLInputElement>;
+    inputs[0].value = 'brandon';
+    inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = 'https://fonts.adobe.com/fonts/brandon-grotesque';
+
+    const items = Array.from(body.querySelectorAll('.fontcia-suggestion-item')) as HTMLButtonElement[];
+    items[0].click();
+
+    expect(onConfirmExisting).toHaveBeenCalledWith('sub-1', 'https://fonts.adobe.com/fonts/brandon-grotesque');
   });
 
   it('calls onSubmitNew with the typed name and source URL when Submit is clicked', () => {

@@ -99,8 +99,48 @@ describe('startEnrollment', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({ type: 'CONFIRM_FONT_SUBMISSION', id: 'sub-1' });
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CONFIRM_FONT_SUBMISSION',
+      id: 'sub-1',
+      sourceUrl: null,
+    });
     expect(body.textContent).toContain('Thanks! Pending community confirmation.');
+  });
+
+  it('confirms an existing submission with a proposed sourceUrl when one was typed', async () => {
+    chromeMock.runtime.sendMessage.mockImplementation(async (message: { type: string }) => {
+      if (message.type === 'GET_PENDING_SUBMISSIONS') {
+        return { ok: true, data: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }] };
+      }
+      if (message.type === 'CONFIRM_FONT_SUBMISSION') {
+        return { ok: true, data: { status: 'pending', confirmationCount: 2 } };
+      }
+      return { ok: true, data: null };
+    });
+
+    const body = document.createElement('div');
+    await startEnrollment({
+      body,
+      isDisposed: () => false,
+      onCancel: vi.fn(),
+      getSampleBlob: async () => ({ status: 'ok', blob: new Blob() }),
+    });
+
+    const inputs = body.querySelectorAll('.fontcia-input') as NodeListOf<HTMLInputElement>;
+    inputs[0].value = 'brandon';
+    inputs[0].dispatchEvent(new Event('input'));
+    inputs[1].value = 'https://fonts.adobe.com/fonts/brandon-grotesque';
+
+    const suggestionBtn = body.querySelector('.fontcia-suggestion-item') as HTMLButtonElement;
+    suggestionBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(chromeMock.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CONFIRM_FONT_SUBMISSION',
+      id: 'sub-1',
+      sourceUrl: 'https://fonts.adobe.com/fonts/brandon-grotesque',
+    });
   });
 
   it('shows the enrollment error state when confirming fails', async () => {
