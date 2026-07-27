@@ -230,3 +230,74 @@ export async function matchImage(blob: Blob): Promise<ApiResponse<RankedMatch[]>
   const errorMessage = (json as { error?: string } | null)?.error ?? `Request failed with status ${res.status}`;
   return { ok: false, error: errorMessage };
 }
+
+export interface PendingSubmission {
+  id: string;
+  fontName: string;
+  confirmationCount: number;
+}
+
+export async function getPendingSubmissions(): Promise<ApiResponse<PendingSubmission[]>> {
+  const result = await apiFetch<{ submissions: PendingSubmission[] }>('/font-submissions/pending', {
+    method: 'GET',
+    auth: 'required',
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.submissions };
+}
+
+export async function confirmFontSubmission(
+  id: string,
+): Promise<ApiResponse<{ status: string; confirmationCount: number }>> {
+  return apiFetch(`/font-submissions/${id}/confirm`, { method: 'POST', auth: 'required' });
+}
+
+export async function submitFont(
+  fontName: string,
+  sourceUrl: string | null,
+  blob: Blob,
+): Promise<ApiResponse<{ submissionId: string }>> {
+  const stored = await getStoredAuth();
+  if (!stored) {
+    return { ok: false, error: 'Not logged in' };
+  }
+
+  async function postSubmission(accessToken: string): Promise<Response> {
+    const formData = new FormData();
+    formData.append('fontName', fontName);
+    if (sourceUrl) formData.append('sourceUrl', sourceUrl);
+    formData.append('image', blob, 'sample.png');
+    return fetch(`${API_BASE_URL}/font-submissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: formData,
+    });
+  }
+
+  let res = await postSubmission(stored.accessToken);
+
+  if (res.status === 401) {
+    const refreshed = await ensureFreshToken();
+    if (refreshed) {
+      const refreshedAuth = await getStoredAuth();
+      if (refreshedAuth) {
+        res = await postSubmission(refreshedAuth.accessToken);
+      }
+    }
+  }
+
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    json = null;
+  }
+
+  if (res.status >= 200 && res.status < 300) {
+    const data = json as { submissionId: string };
+    return { ok: true, data: { submissionId: data.submissionId } };
+  }
+
+  const errorMessage = (json as { error?: string } | null)?.error ?? `Request failed with status ${res.status}`;
+  return { ok: false, error: errorMessage };
+}

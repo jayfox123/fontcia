@@ -10,6 +10,9 @@ import {
   deleteSavedFont,
   logScan,
   matchImage,
+  getPendingSubmissions,
+  confirmFontSubmission,
+  submitFont,
 } from '../src/background/api-client';
 import { getStoredAuth, setStoredAuth } from '../src/background/auth-storage';
 
@@ -319,5 +322,109 @@ describe('matchImage', () => {
     const result = await matchImage(new Blob());
 
     expect(result).toEqual({ ok: false, error: 'Request failed with status 500' });
+  });
+});
+
+describe('getPendingSubmissions', () => {
+  it('fetches and unwraps the submissions array', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { submissions: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }] }),
+    );
+
+    const result = await getPendingSubmissions();
+
+    expect(result).toEqual({
+      ok: true,
+      data: [{ id: 'sub-1', fontName: 'Brandon Grotesque', confirmationCount: 1 }],
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/font-submissions/pending');
+  });
+
+  it('fails fast without calling fetch when not logged in', async () => {
+    const result = await getPendingSubmissions();
+
+    expect(result).toEqual({ ok: false, error: 'Not logged in' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('confirmFontSubmission', () => {
+  it('posts to /font-submissions/:id/confirm', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: 'pending', confirmationCount: 2 }));
+
+    const result = await confirmFontSubmission('sub-1');
+
+    expect(result).toEqual({ ok: true, data: { status: 'pending', confirmationCount: 2 } });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/font-submissions/sub-1/confirm');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+  });
+});
+
+describe('submitFont', () => {
+  it('posts the blob and fields as multipart form data with the stored access token attached', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { submissionId: 'sub-1' }));
+
+    const blob = new Blob(['fake image data'], { type: 'image/png' });
+    const result = await submitFont('Brandon Grotesque', 'https://example.com', blob);
+
+    expect(result).toEqual({ ok: true, data: { submissionId: 'sub-1' } });
+    const [url, requestInit] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://localhost:3001/font-submissions');
+    expect(requestInit.method).toBe('POST');
+    expect(requestInit.headers.Authorization).toBe('Bearer access-1');
+    expect(requestInit.body).toBeInstanceOf(FormData);
+
+    const body = requestInit.body as FormData;
+    expect(body.get('fontName')).toBe('Brandon Grotesque');
+    expect(body.get('sourceUrl')).toBe('https://example.com');
+    const uploaded = body.get('image') as File;
+    expect(uploaded.name).toBe('sample.png');
+    expect(uploaded.size).toBe(blob.size);
+  });
+
+  it('omits the sourceUrl field entirely when null', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { submissionId: 'sub-1' }));
+
+    await submitFont('Brandon Grotesque', null, new Blob(['fake']));
+
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    expect(body.get('sourceUrl')).toBeNull();
+  });
+
+  it('fails fast without calling fetch when not logged in', async () => {
+    const result = await submitFont('Brandon Grotesque', null, new Blob());
+
+    expect(result).toEqual({ ok: false, error: 'Not logged in' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes and retries once on a 401', async () => {
+    await setStoredAuth(STORED);
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'Unauthorized' }))
+      .mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: 'access-2', refreshToken: 'refresh-2', expiresAt: '2026-01-02T00:00:00.000Z' }),
+      )
+      .mockResolvedValueOnce(jsonResponse(201, { submissionId: 'sub-1' }));
+
+    const result = await submitFont('Brandon Grotesque', null, new Blob(['fake']));
+
+    expect(result).toEqual({ ok: true, data: { submissionId: 'sub-1' } });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const retryHeaders = fetchMock.mock.calls[2][1].headers;
+    expect(retryHeaders.Authorization).toBe('Bearer access-2');
+  });
+
+  it('returns the server error message on a non-2xx response', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(jsonResponse(400, { error: 'fontName is required' }));
+
+    const result = await submitFont('', null, new Blob());
+
+    expect(result).toEqual({ ok: false, error: 'fontName is required' });
   });
 });
