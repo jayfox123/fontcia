@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createChromeMock } from './helpers/chrome-mock';
 
 const FIXTURE_HTML = `
@@ -30,6 +30,12 @@ beforeEach(() => {
     if (message.type === 'GET_SCANS') return { ok: true, data: [] };
     return { ok: true, data: null };
   });
+});
+
+afterEach(() => {
+  // Some tests below replace ./account-view with a vi.doMock() test double; make sure
+  // it never leaks into a later test's module graph.
+  vi.doUnmock('../src/account/account-view');
 });
 
 describe('account page', () => {
@@ -128,5 +134,76 @@ describe('account page', () => {
     await Promise.resolve();
 
     expect(document.getElementById('viewContainer')?.textContent).not.toContain("haven't saved");
+  });
+
+  it('does not tear down the Account tab when re-clicking the already-active tab', async () => {
+    await loadAccountPage();
+
+    const emailInput = document.querySelector('#viewContainer input[type="email"]') as HTMLInputElement;
+    emailInput.value = 'someone@example.com';
+
+    (document.getElementById('tabAccount') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const emailInputAfter = document.querySelector('#viewContainer input[type="email"]') as HTMLInputElement;
+    expect(emailInputAfter).toBe(emailInput);
+    expect(emailInputAfter.value).toBe('someone@example.com');
+  });
+
+  it('uses render-generation staleness (not tab identity) so a stale first Account-tab render cannot clobber a later return to Account', async () => {
+    // account-view.ts's real renderAccountView is incidentally safe against this race today
+    // because it only ever mutates its own freshly-created (and, once stale, detached) DOM
+    // elements. To prove the orchestrator's staleness mechanism is correct on its own merits
+    // -- not just safe by accident of how the current view happens to be written -- this test
+    // stands in a fake view that does what a future view legitimately might: write straight
+    // into the shared container passed to it.
+    document.body.innerHTML = FIXTURE_HTML;
+    vi.resetModules();
+
+    let resolveFirstRenderGate!: () => void;
+    const firstRenderGate = new Promise<void>((resolve) => {
+      resolveFirstRenderGate = resolve;
+    });
+    let accountRenderCount = 0;
+
+    vi.doMock('../src/account/account-view', () => ({
+      renderAccountView: vi.fn(async (container: HTMLElement, isStale: () => boolean) => {
+        accountRenderCount += 1;
+        if (accountRenderCount === 1) {
+          await firstRenderGate;
+          if (isStale()) return;
+          container.textContent = 'FIRST (STALE) RENDER';
+          return;
+        }
+        container.textContent = 'SECOND RENDER';
+      }),
+    }));
+
+    await import('../src/account/account');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Leave the Account tab (generation 2) ...
+    (document.getElementById('tabHistory') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // ... then come back to it (generation 3), which is the scenario the old
+    // `activeTab !== thisTab` comparison got wrong: activeTab is 'account' again by the
+    // time generation 1's deferred fetch resolves below, even though generation 1 is long
+    // superseded by generation 3.
+    (document.getElementById('tabAccount') as HTMLButtonElement).click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.getElementById('viewContainer')?.textContent).toBe('SECOND RENDER');
+
+    resolveFirstRenderGate();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(document.getElementById('viewContainer')?.textContent).toBe('SECOND RENDER');
   });
 });

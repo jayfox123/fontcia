@@ -15,8 +15,10 @@ const TAB_BUTTON_IDS: Record<Tab, string> = {
 };
 
 let activeTab: Tab = 'account';
+let renderGeneration = 0;
 
 function switchTab(tab: Tab): void {
+  if (tab === activeTab) return;
   activeTab = tab;
   renderActiveTab();
 }
@@ -26,9 +28,11 @@ function applyThemeToOwnPage(theme: Theme): void {
 }
 
 function renderActiveTab(): void {
-  const thisTab = activeTab;
-  const isStale = (): boolean => activeTab !== thisTab;
+  renderGeneration += 1;
+  const thisGeneration = renderGeneration;
+  const isStale = (): boolean => renderGeneration !== thisGeneration;
 
+  const thisTab = activeTab;
   for (const [tab, id] of Object.entries(TAB_BUTTON_IDS) as [Tab, string][]) {
     document.getElementById(id)?.classList.toggle('tab-active', tab === thisTab);
   }
@@ -53,10 +57,14 @@ export async function initAccountPage(): Promise<void> {
   document.head.appendChild(style);
   applyThemeToOwnPage(await getStoredTheme());
 
-  document.getElementById('tabAccount')?.addEventListener('click', () => switchTab('account'));
-  document.getElementById('tabSavedFonts')?.addEventListener('click', () => switchTab('saved-fonts'));
-  document.getElementById('tabHistory')?.addEventListener('click', () => switchTab('history'));
-  document.getElementById('tabSettings')?.addEventListener('click', () => switchTab('settings'));
+  for (const [tab, id] of Object.entries(TAB_BUTTON_IDS) as [Tab, string][]) {
+    const btn = document.getElementById(id);
+    if (!btn) {
+      console.error(`fontCIA: missing tab button #${id}`);
+      continue;
+    }
+    btn.addEventListener('click', () => switchTab(tab));
+  }
 
   renderActiveTab();
 }
