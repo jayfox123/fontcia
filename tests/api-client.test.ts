@@ -14,6 +14,8 @@ import {
   confirmFontSubmission,
   submitFont,
   resolveFontName,
+  getSavedFonts,
+  getScans,
 } from '../src/background/api-client';
 import { getStoredAuth, setStoredAuth } from '../src/background/auth-storage';
 
@@ -489,5 +491,59 @@ describe('submitFont', () => {
     const result = await submitFont('', null, new Blob());
 
     expect(result).toEqual({ ok: false, error: 'fontName is required' });
+  });
+});
+
+describe('getSavedFonts', () => {
+  it('fetches and unwraps the savedFonts array', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        savedFonts: [
+          { id: 'font-1', fontName: 'Inter', confidence: 92, sources: [], savedAt: '2026-01-01T00:00:00.000Z' },
+        ],
+      }),
+    );
+
+    const result = await getSavedFonts();
+
+    expect(result).toEqual({
+      ok: true,
+      data: [{ id: 'font-1', fontName: 'Inter', confidence: 92, sources: [], savedAt: '2026-01-01T00:00:00.000Z' }],
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/saved-fonts');
+  });
+
+  it('fails fast without calling fetch when not logged in', async () => {
+    const result = await getSavedFonts();
+
+    expect(result).toEqual({ ok: false, error: 'Not logged in' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getScans', () => {
+  it('fetches and unwraps the scans array', async () => {
+    await setStoredAuth(STORED);
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, {
+        scans: [{ id: 'scan-1', status: 'match', fontName: 'Inter', confidence: 92, createdAt: '2026-01-01T00:00:00.000Z' }],
+      }),
+    );
+
+    const result = await getScans();
+
+    expect(result).toEqual({
+      ok: true,
+      data: [{ id: 'scan-1', status: 'match', fontName: 'Inter', confidence: 92, createdAt: '2026-01-01T00:00:00.000Z' }],
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:3001/scans');
+  });
+
+  it('fails fast without calling fetch when not logged in', async () => {
+    const result = await getScans();
+
+    expect(result).toEqual({ ok: false, error: 'Not logged in' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

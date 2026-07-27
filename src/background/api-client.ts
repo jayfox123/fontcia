@@ -311,3 +311,34 @@ export interface FontResolution {
 export async function resolveFontName(fontFamilyStack: string): Promise<ApiResponse<FontResolution>> {
   return apiFetch(`/fonts/resolve?name=${encodeURIComponent(fontFamilyStack)}`, { method: 'GET', auth: 'optional' });
 }
+
+export interface SavedFontRecord {
+  id: string;
+  fontName: string;
+  confidence: number;
+  sources: ScanSource[];
+  savedAt: string;
+}
+
+export async function getSavedFonts(): Promise<ApiResponse<SavedFontRecord[]>> {
+  const result = await apiFetch<{ savedFonts: SavedFontRecord[] }>('/saved-fonts', {
+    method: 'GET',
+    auth: 'required',
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.savedFonts };
+}
+
+export interface ScanRecord {
+  id: string;
+  status: 'match' | 'no-match';
+  fontName: string | null;
+  confidence: number | null;
+  createdAt: string;
+}
+
+export async function getScans(): Promise<ApiResponse<ScanRecord[]>> {
+  const result = await apiFetch<{ scans: ScanRecord[] }>('/scans', { method: 'GET', auth: 'required' });
+  if (!result.ok) return result;
+  return { ok: true, data: result.data.scans };
+}
